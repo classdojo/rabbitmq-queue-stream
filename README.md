@@ -12,7 +12,7 @@ $ npm i rabbitmq-queue-stream
 
 ```javascript
 var RabbitMQStream = require("rabbitmq-queue-stream");
-var Transform      = require("stream").Transform;
+var stream         = require("stream");
 
 var options = {
   connection: {
@@ -32,8 +32,6 @@ RabbitMQStream.init(2, options, function(err, streamifiedQueues) {
     return console.error(err);
   }
 
-  var queueStreams = streamifiedQueues.sources;
-
   /*
    * Each consumer channel comes with a .source and .sink property.
    * 
@@ -45,18 +43,18 @@ RabbitMQStream.init(2, options, function(err, streamifiedQueues) {
    *
   */
 
-  streamifiedQueues.sources.forEach(function(myQueueStream) {
+  streamifiedQueues.channels.forEach(function(channel) {
 
-    var doSomethingWithData = new Transform({objectMode: true});
-    doSomethingWithData._transform(function(data, enc, next) {
+    var myProcessingStream = new stream.Transform({objectMode: true});
+    myProcessingStream._transform(function(data, enc, next) {
       console.log("Doing something with", data);
       this.push(data);
       next();
     });
 
-    myQueueStream.source
-      .pipe(doSomethingWithData)
-      .pipe(myQueueStream.sink);
+    channel.source
+      .pipe(myProcessingStream)
+      .pipe(channel.sink);
   });
 
   /* example graceful shutdown routine */
@@ -66,7 +64,7 @@ RabbitMQStream.init(2, options, function(err, streamifiedQueues) {
       if(err) {
         //handle error
       }
-      //Wait some time for queues to flush out. Then close Consumers
+      //Wait some time for queues to flush out before closing consumers.
       streamifiedQueues.closeConsumers(function(err) {
         if(err) {
           //handle error
@@ -83,7 +81,7 @@ RabbitMQStream.init(2, options, function(err, streamifiedQueues) {
 });
 ```
 
-### Events
+### Emitted Events
 
 #### .source
 * parseError - Emitted when a job cannot be json parsed. Passes in malform
@@ -92,6 +90,7 @@ myQueueStream.source.on("parseError", function(err, message) {
   console.error("Problem JSON parsing message", message);
 });
 ```
+
 #### .sink
 * deleted - Emitted everytime a job is deleted from the queue
 ```javascript
@@ -100,8 +99,8 @@ myQueueStream.source.on("deleted", function() {
   console.log("Deleted", totalDeleted++);
 });
 ```
-* formatError - Sink received a job that does not have the necessary information to be deleted from the queue.
-                Most likely emitted when objects not originating from .source are written to sink.
+* formatError - Sink received a job that does not have the necessary information to be deleted from the queue.  
+  Most likely emitted when objects not originating from .source are written to sink.
 ```javascript
 myQueueStream.sink.on("formatError", function(err, message) {
   console.error("Malformatted message written to .sink. Please check your pipeline configuration", message);

@@ -67,7 +67,7 @@ describe("rabbitmq-queue-stream", function() {
       });
 
 
-      it("sets me.streams if successful", function (done) {
+      it("sets channels if successful", function (done) {
         var connection = {};
         var queueStream = {};
         var worker = {};
@@ -81,9 +81,9 @@ describe("rabbitmq-queue-stream", function() {
 
         streams.initialize(function (err, result) {
           expect(result).to.be(streams);
-          expect(streams.streams).to.have.length(6);
-          streams.streams.forEach( function(item) {
-            expect(item).to.be(worker);
+          expect(streams.channels).to.have.length(6);
+          streams.channels.forEach( function(channel) {
+            expect(channel).to.be(worker);
           });
           done(err);
         });
@@ -169,15 +169,15 @@ describe("rabbitmq-queue-stream", function() {
             close: sinon.stub().yields(null)
           });
         });
-        amqp.streams = streams;
+        amqp.channels = streams;
       });
 
       describe("#unsubscribeConsumers", function() {
-        it("calls #unsubscribe for every stream in AMQPStreams.streams", function(done) {
+        it("calls #unsubscribe for every stream in AMQPStreams.channels", function(done) {
           amqp.unsubscribeConsumers(function(err) {
             expect(err).to.not.be.ok();
-            amqp.streams.forEach(function(stream) {
-              expect(stream.unsubscribe.callCount).to.be(1);
+            amqp.channels.forEach(function(channel) {
+              expect(channel.unsubscribe.callCount).to.be(1);
             });
             done();
           });
@@ -186,11 +186,11 @@ describe("rabbitmq-queue-stream", function() {
       });
 
       describe("#closeConsumers", function() {
-        it("calls #close on every stream in AMQPStreams.streams", function(done) {
+        it("calls #close on every stream in AMQPStreams.channels", function(done) {
           amqp.closeConsumers(function(err) {
             expect(err).to.not.be.ok();
-            amqp.streams.forEach(function(stream) {
-              expect(stream.close.callCount).to.be(1);
+            amqp.channels.forEach(function(channel) {
+              expect(channel.close.callCount).to.be(1);
             });
             done();
           });
@@ -236,13 +236,13 @@ describe("rabbitmq-queue-stream", function() {
 
       describe("#resubscribeConsumers", function() {
         beforeEach(function() {
-          amqp.streams.forEach(function(stream) {
+          amqp.channels.forEach(function(stream) {
             stream._subscribeToQueue = sinon.stub().yields(null);
           });
         });
 
         afterEach(function() {
-          amqp.streams.forEach(function(stream) {
+          amqp.channels.forEach(function(stream) {
             stream._subscribeToQueue.reset();
           });
         });
@@ -250,7 +250,7 @@ describe("rabbitmq-queue-stream", function() {
         it("attempts to resubscribe to the queue if the worker is unsubscribed", function(done) {
           amqp.resubscribeConsumers(function(err) {
             expect(err).to.not.be.ok();
-            amqp.streams.forEach(function(stream) {
+            amqp.channels.forEach(function(stream) {
               expect(stream._subscribeToQueue.callCount).to.be(1);
             });
             done();
@@ -259,12 +259,12 @@ describe("rabbitmq-queue-stream", function() {
 
         it("doesn't attempt to subscribe to the queue if the queue is already subscribed", function(done) {
           //since we haven't initialized the streams in the test, let's manually say we've subscribed here
-          amqp.streams.forEach(function(stream) {
+          amqp.channels.forEach(function(stream) {
             stream.subscribed = true;
           });
           amqp.resubscribeConsumers(function(err) {
             expect(err).to.not.be.ok();
-            amqp.streams.forEach(function(stream) {
+            amqp.channels.forEach(function(stream) {
               expect(stream._subscribeToQueue.callCount).to.be(0);
             });
             done();

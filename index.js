@@ -36,7 +36,7 @@ exports.init = function(numStreams, options, cb) {
 function AMQPStreams(numStreams, options) {
   this.__numStreams = numStreams || 1;
   this.__options = options;
-  this.streams = [];
+  this.channels = [];
 }
 
 
@@ -58,7 +58,7 @@ AMQPStreams.prototype.initialize = function(cb) {
       if(err) {
         return cb(err);
       }
-      me.streams = insightStreams;
+      me.channels = insightStreams;
       cb(null, me);
     });
   });
@@ -115,7 +115,7 @@ AMQPStreams.prototype._createConnection = function(connectionOpts, cb) {
 */
 AMQPStreams.prototype.unsubscribeConsumers = function(cb) {
   //close every worker stream
-  async.eachSeries(this.streams, function(stream, next) {
+  async.eachSeries(this.channels, function(stream, next) {
     stream.unsubscribe(next);
   }, cb);
 };
@@ -130,7 +130,7 @@ AMQPStreams.prototype.unsubscribeConsumers = function(cb) {
  *
 */
 AMQPStreams.prototype.closeConsumers = function(cb) {
-  async.eachSeries(this.streams, function(stream, next) {
+  async.eachSeries(this.channels, function(stream, next) {
     stream.close(next);
   }, cb);
 };
@@ -169,7 +169,7 @@ AMQPStreams.prototype.disconnect = function(cb) {
  * Resubscribe queue consumers. Should be called after
  */
 AMQPStreams.prototype.resubscribeConsumers = function(cb) {
-  async.eachSeries(this.streams, function(stream, next) {
+  async.eachSeries(this.channels, function(stream, next) {
     if(!stream.subscribed) {
       stream._subscribeToQueue(next);
     } else {
