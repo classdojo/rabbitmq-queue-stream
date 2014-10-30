@@ -11,9 +11,10 @@
     "url": "https://github.com/classdojo/rabbitmq-queue-stream"
   },
   "keywords": [
-    "rabbtmq",
+    "rabbitmq",
     "amqp",
     "queue",
+    "stream",
     "streaming"
   ],
   "dependencies": {
