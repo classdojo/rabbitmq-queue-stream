@@ -53,6 +53,16 @@ RabbitMQStream.init(2, options, function(err, streamifiedQueues) {
     myProcessingStream._transform(function(data, enc, next) {
       console.log("Doing something with", data);
       this.push(data);
+      /*
+       * Messages are successfully acked and removed from the queue by default.
+       * RabbitMQStream provides methods to requeue and delete messages too.
+       *
+       * Requeue:
+       *     this.push(RabbitMQStream.RequeueMessage(data));
+       *
+       * Delete:
+       *     this.push(RabbitMQStream.DeleteMessage(data));
+      */
       next();
     });
 
