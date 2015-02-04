@@ -452,6 +452,17 @@ describe("rabbitmq-queue-stream", function() {
       });
 
       describe("stream.sink", function () {
+        var amqpResponseStub;
+        var goodMessage;
+
+        beforeEach(function() {
+          amqpResponseStub = sinon.stub({
+            acknowledge: function() {},
+            reject: function() {}
+          });
+          goodMessage = {_meta: {ackIndex: 1}};
+        });
+
         it("emits a `formatError` when message._meta has no ackIndex", function (done) {
           var badMessage = {
             _meta: {}
@@ -487,23 +498,55 @@ describe("rabbitmq-queue-stream", function() {
           readable.pipe(instance.sink);
         });
 
-        it("acknowledges ack, nulls it, and emits a `deleted` event", function (done) {
-          var acknowledgeStub = sinon.stub();
+        it("releases messages from queue when tagged with rabbitmq.ReleaseMessage", function(done) {
           instance.__outstandingAcks = [
             undefined,
-            {acknowledge: acknowledgeStub}
+            amqpResponseStub
           ];
-          var goodMessage = {
-            _meta: {ackIndex: 1}
+          readable._read = function () {
+            this.push(rabbitmq.RequeueMessage(goodMessage));
           };
+          instance._streamifyQueue(cb);
+          instance.sink.on("deleted", function () {
+            expect(amqpResponseStub.reject.callCount).to.be(1);
+            expect(amqpResponseStub.reject.args[0][0]).to.be(true);
+            expect(instance.__outstandingAcks[1]).to.be(null);
+            done();
+          });
+          readable.pipe(instance.sink);
+        });
+
+        it("removes messages from queue when tagged with AMQPStream.RemoveMessage", function(done) {
+          instance.__outstandingAcks = [
+            undefined,
+            amqpResponseStub
+          ];
+          readable._read = function () {
+            this.push(rabbitmq.DeleteMessage(goodMessage));
+          };
+          instance._streamifyQueue(cb);
+          instance.sink.on("deleted", function () {
+            expect(amqpResponseStub.reject.callCount).to.be(1);
+            expect(amqpResponseStub.reject.args[0][0]).to.be(false);
+            expect(instance.__outstandingAcks[1]).to.be(null);
+            done();
+          });
+          readable.pipe(instance.sink);
+        });
+
+        it("acknowledges ack, nulls it, and emits a `deleted` event", function (done) {
+          instance.__outstandingAcks = [
+            undefined,
+            amqpResponseStub
+          ];
           readable._read = function () {
             this.push(goodMessage);
           };
 
           instance._streamifyQueue(cb);
           instance.sink.on("deleted", function () {
-            expect(acknowledgeStub.callCount).to.be(1);
-            expect(acknowledgeStub.args[0][0]).to.be(false);
+            expect(amqpResponseStub.acknowledge.callCount).to.be(1);
+            expect(amqpResponseStub.acknowledge.args[0][0]).to.be(false);
             expect(instance.__outstandingAcks[1]).to.be(null);
             done();
           });

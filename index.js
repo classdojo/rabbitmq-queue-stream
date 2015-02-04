@@ -22,6 +22,23 @@ exports.init = function(numStreams, options, cb) {
   streams.initialize(cb);
 };
 
+
+exports.RequeueMessage = function(message) {
+  if(!message._meta) {
+    return console.error();
+  }
+  message._meta.requeue = true;
+  return message;
+};
+
+exports.DeleteMessage = function(message) {
+  if(!message._meta) {
+    return console.error();
+  }
+  message._meta.delete = true;
+  return message; 
+};
+
 /*
 
   @param numStreams
@@ -333,9 +350,16 @@ AMQPStream.prototype._streamifyQueue = function(cb) {
       streamDebug("Could not find ack function for " + message);
       return this.emit("ackError", new Error("Cannot find ack for message."), message);
     }
-    me.__outstandingAcks[ackIndex].acknowledge(false);
+    /* TODO: How do we handle errors from acking? */
+    if(message._meta.requeue) {
+      me.__outstandingAcks[ackIndex].reject(true);
+    } else if(message._meta.delete) {
+      me.__outstandingAcks[ackIndex].reject(false);
+    } else {
+      me.__outstandingAcks[ackIndex].acknowledge(false);
+    }
     me.__outstandingAcks[ackIndex] = null;
-    this.emit("deleted");
+    this.emit("deleted", message);
     next();
   };
   this.sink = sink;

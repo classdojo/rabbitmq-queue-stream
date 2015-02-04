@@ -1,4 +1,8 @@
 # rabbitmq-queue-stream
+[![Build Status](https://travis-ci.org/classdojo/rabbitmq-queue-stream.svg?branch=master)](https://travis-ci.org/classdojo/rabbitmq-queue-stream)
+[![codecov.io](https://codecov.io/github/classdojo/rabbitmq-queue-stream/coverage.svg?branch=master)](https://codecov.io/github/classdojo/rabbitmq-queue-stream?branch=master)
+[![NPM version](https://badge.fury.io/js/rabbitmq-queue-stream.png)](http://badge.fury.io/js/rabbitmq-queue-stream)
+
 
 ### Tests
 ```bash

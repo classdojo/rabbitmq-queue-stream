@@ -25,6 +25,8 @@
     "lodash": "2.4.1"
   },
   "devDependencies": {
+    "codecov.io": "0.0.8",
+    "istanbul": "0.3.5",
     "mocha": "2.0.1",
     "expect.js": "0.2.0",
     "sinon": "1.11.1",
