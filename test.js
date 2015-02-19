@@ -498,7 +498,7 @@ describe("rabbitmq-queue-stream", function() {
           readable.pipe(instance.sink);
         });
 
-        it("releases messages from queue when tagged with rabbitmq.ReleaseMessage", function(done) {
+        it("releases messages from queue when tagged with rabbitmq.RequeueMessage", function (done) {
           instance.__outstandingAcks = [
             undefined,
             amqpResponseStub
@@ -507,7 +507,7 @@ describe("rabbitmq-queue-stream", function() {
             this.push(rabbitmq.RequeueMessage(goodMessage));
           };
           instance._streamifyQueue(cb);
-          instance.sink.on("deleted", function () {
+          instance.sink.on("requeued", function () {
             expect(amqpResponseStub.reject.callCount).to.be(1);
             expect(amqpResponseStub.reject.args[0][0]).to.be(true);
             expect(instance.__outstandingAcks[1]).to.be(null);
@@ -516,7 +516,7 @@ describe("rabbitmq-queue-stream", function() {
           readable.pipe(instance.sink);
         });
 
-        it("removes messages from queue when tagged with AMQPStream.RemoveMessage", function(done) {
+        it("removes messages from queue when tagged with AMQPStream.RemoveMessage", function (done) {
           instance.__outstandingAcks = [
             undefined,
             amqpResponseStub
@@ -534,7 +534,7 @@ describe("rabbitmq-queue-stream", function() {
           readable.pipe(instance.sink);
         });
 
-        it("acknowledges ack, nulls it, and emits a `deleted` event", function (done) {
+        it("acknowledges ack, nulls it, and emits a `acknowledged` event", function (done) {
           instance.__outstandingAcks = [
             undefined,
             amqpResponseStub
@@ -544,7 +544,7 @@ describe("rabbitmq-queue-stream", function() {
           };
 
           instance._streamifyQueue(cb);
-          instance.sink.on("deleted", function () {
+          instance.sink.on("acknowledged", function () {
             expect(amqpResponseStub.acknowledge.callCount).to.be(1);
             expect(amqpResponseStub.acknowledge.args[0][0]).to.be(false);
             expect(instance.__outstandingAcks[1]).to.be(null);
@@ -566,7 +566,7 @@ describe("rabbitmq-queue-stream", function() {
         instance = new rabbitmq.AMQPStream();
       });
 
-      it("processes first message if items are enqueued", function(done) {
+      it("processes first message if items are enqueued", function (done) {
         instance.__pendingQueue = ["one", "two", "three"];
         instance._waitForMessage(cb);
         expect(cb.callCount).to.be(1);
@@ -580,7 +580,7 @@ describe("rabbitmq-queue-stream", function() {
         }, 20);
       });
 
-      it("waits for messages and begins processing when they appear", function(done) {
+      it("waits for messages and begins processing when they appear", function (done) {
         instance._waitForMessage(cb);
         setTimeout(function() {
           expect(cb.callCount).to.be(0);
@@ -633,7 +633,7 @@ describe("rabbitmq-queue-stream", function() {
         instance = new rabbitmq.AMQPStream();
       });
 
-      it("calls unsubscribe on queue if currently subscribed", function(done) {
+      it("calls unsubscribe on queue if currently subscribed", function (done) {
         var queue = {};
         
         var addCallback = sinon.stub();
@@ -658,7 +658,7 @@ describe("rabbitmq-queue-stream", function() {
         });
       });
 
-      it("does nothing if already unsubscribed", function(done) {
+      it("does nothing if already unsubscribed", function (done) {
         instance.subscribed = false;
         instance.unsubscribe(done);
       });
@@ -673,7 +673,7 @@ describe("rabbitmq-queue-stream", function() {
         instance.__queue = queueMock;
       });
 
-      it("calls this#close with the right consumer tag", function(done) {
+      it("calls this#close with the right consumer tag", function (done) {
         instance.__consumerTag = "consumerTag";
         instance.close(function(err) {
           expect(instance.__queue.close.callCount).to.be(1);
@@ -683,7 +683,7 @@ describe("rabbitmq-queue-stream", function() {
         instance.__queue.emit("close");
       });
 
-      it("returns on error if there was an issue with closing", function(done) {
+      it("returns on error if there was an issue with closing", function (done) {
         instance.close(function(err) {
           expect(err).to.be.an(Error);
           done();
@@ -691,7 +691,7 @@ describe("rabbitmq-queue-stream", function() {
         instance.__queue.emit("error", new Error("Some error"));
       });
 
-      it("does not return an error if the channel successfully closes", function(done) {
+      it("does not return an error if the channel successfully closes", function (done) {
         instance.close(function(err) {
           expect(err).to.not.be.ok();
           done();
