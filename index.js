@@ -351,17 +351,21 @@ AMQPStream.prototype._streamifyQueue = function(cb) {
       return this.emit("ackError", new Error("Cannot find ack for message."), message);
     }
     /* TODO: How do we handle errors from acking? */
+
+    var eventName;
     if(message._meta.requeue) {
       me.__outstandingAcks[ackIndex].reject(true);
-      this.emit("requeued", message);
+      eventName = "requeued";
     } else if(message._meta.delete) {
       me.__outstandingAcks[ackIndex].reject(false);
-      this.emit("deleted", message);
+      eventName = "deleted";
     } else {
       me.__outstandingAcks[ackIndex].acknowledge(false);
-      this.emit("acknowledged", message);
+      eventName = "acknowledged";
     }
+
     me.__outstandingAcks[ackIndex] = null;
+    this.emit(eventName, message);
     next();
   };
   this.sink = sink;
