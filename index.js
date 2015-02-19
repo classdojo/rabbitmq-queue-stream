@@ -353,13 +353,15 @@ AMQPStream.prototype._streamifyQueue = function(cb) {
     /* TODO: How do we handle errors from acking? */
     if(message._meta.requeue) {
       me.__outstandingAcks[ackIndex].reject(true);
+      this.emit("requeued", message);
     } else if(message._meta.delete) {
       me.__outstandingAcks[ackIndex].reject(false);
+      this.emit("deleted", message);
     } else {
       me.__outstandingAcks[ackIndex].acknowledge(false);
+      this.emit("acknowledged", message);
     }
     me.__outstandingAcks[ackIndex] = null;
-    this.emit("deleted", message);
     next();
   };
   this.sink = sink;
