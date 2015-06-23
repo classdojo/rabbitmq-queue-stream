@@ -22,9 +22,15 @@ var options = {
   connection: {
     url: "amqp://user:password@rabbitmq.com"
   },
-  queueStream: {
+  queue: {
     name: "myQueue",
-    prefetchCount: 100
+    subscribe: {
+      prefetchCount: 100
+      /* Any other option accepted by https://github.com/postwait/node-amqp#queuesubscribeoptions-listener */
+    },
+    connection: {
+      /* Any option accepted by https://github.com/postwait/node-amqp#connectionqueuename-options-opencallback */
+    }
   }
 };
 

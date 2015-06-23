@@ -44,11 +44,15 @@ exports.DeleteMessage = function(message) {
   @param numStreams
   @params options
 
-    options.connection.* - Anything accepted by amqp.createConnection
-
-    options.queueStream.* - Anything accepted by connection.queue()
-
     options.url - amqp url
+
+    options.connection.* - Anything accepted by amqp.createConnection (See: https://github.com/postwait/node-amqp#connection-options-and-url)
+
+    options.queue.connection.* - Anything accepted by connection.queue() (See: https://github.com/postwait/node-amqp#connectionqueuename-options-opencallback)
+      DEFAULT: {passive: true}
+
+    options.queue.subscribe.* - Anything accepted by queue.subscribe() (See: https://github.com/postwait/node-amqp#queuesubscribeoptions-listener)
+      DEFAULT: {ack: true, prefetchCount: 1}
 */
 function AMQPStreams(numStreams, options) {
   this.__numStreams = numStreams || 1;
@@ -68,7 +72,7 @@ AMQPStreams.prototype.initialize = function(cb) {
 
     //create individual stream channels to queue
     var createWorker = function(n, cb) {
-      AMQPStream.create(connection, me.__options.queueStream, cb);
+      AMQPStream.create(connection, me.__options.queue, cb);
     };
 
     async.timesSeries(me.__numStreams, createWorker, function(err, channels) {
@@ -212,8 +216,8 @@ AMQPStream.create = function(connection, options, cb) {
   this._totalWorkers = this._totalWorkers || 0;
   this._totalWorkers++;
   streamInitDebug("Creating stream " + this._totalWorkers);
-  var insightStream = new this(connection, options);
-  insightStream.initialize(cb);
+  var stream = new this(connection, options);
+  stream.initialize(cb);
 };
 
 AMQPStream.prototype.initialize = function(cb) {
@@ -249,7 +253,7 @@ AMQPStream.prototype._connectToQueue = function(queueName, cb) {
     streamInitDebug("Error connecting to queue " + queueName + ": " + err.message);
     return cb(err);
   });
-  this.__connection.queue(queueName, {passive: true}, function(queue) {
+  this.__connection.queue(queueName, _.merge({passive: true}, this.__options.connection), function(queue) {
     streamInitDebug("Connected to queue " + queueName);
     me.__connection.removeAllListeners("error");
     return cb(null, queue);
@@ -259,12 +263,8 @@ AMQPStream.prototype._connectToQueue = function(queueName, cb) {
 AMQPStream.prototype._subscribeToQueue = function(cb) {
   var me = this;
   var queue = this.__queue;
-  var subscribeOptions = {ack: true, prefetchCount: 1};
-  if(this.__options.prefetchCount) {
-    subscribeOptions.prefetchCount = this.__options.prefetchCount;
-  }
   /* TODO: Figure out how to error handle subscription. Maybe a 'once' error handler. */
-  queue.subscribe(subscribeOptions, function(message, headers, deliveryInfo, ack) {
+  queue.subscribe(_.merge({ack: true, prefetchCount: 1}, this.__options.subscribe), function(message, headers, deliveryInfo, ack) {
     var serializableMessage = {
       body: message.data,
       headers: headers,

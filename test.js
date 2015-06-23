@@ -46,12 +46,12 @@ describe("rabbitmq-queue-stream", function() {
 
       it("attempts to create the right number of workers", function (done) {
         var connection = {};
-        var queueStream = {};
+        var queue      = {};
         streamCreateStub.yields(null);
         createConnectionStub.yields(null, connection);
         
         var streams = new rabbitmq.AMQPStreams(6, {
-          queueStream: queueStream
+          queue: queue
         });
 
 
@@ -60,7 +60,7 @@ describe("rabbitmq-queue-stream", function() {
           expect(streamCreateStub.callCount).to.be(6);
           streamCreateStub.args.forEach(function (argSet) {
             expect(argSet[0]).to.be(connection);
-            expect(argSet[1]).to.be(queueStream);
+            expect(argSet[1]).to.be(queue);
           });
           done(err);
         });
@@ -69,14 +69,14 @@ describe("rabbitmq-queue-stream", function() {
 
       it("sets channels if successful", function (done) {
         var connection = {};
-        var queueStream = {};
+        var queue  = {};
         var worker = {};
 
         createConnectionStub.yields(null, connection);
         streamCreateStub.yields(null, worker);
 
         var streams = new rabbitmq.AMQPStreams(6, {
-          queueStream: queueStream
+          queue: queue
         });
 
         streams.initialize(function (err, result) {
