@@ -498,7 +498,7 @@ describe("rabbitmq-queue-stream", function() {
           readable.pipe(instance.sink);
         });
 
-        it("releases messages from queue when tagged with rabbitmq.ReleaseMessage", function(done) {
+        it("releases messages from queue when tagged with rabbitmq.RequeueMessage", function(done) {
           instance.__outstandingAcks = [
             undefined,
             amqpResponseStub
@@ -507,7 +507,7 @@ describe("rabbitmq-queue-stream", function() {
             this.push(rabbitmq.RequeueMessage(goodMessage));
           };
           instance._streamifyQueue(cb);
-          instance.sink.on("deleted", function () {
+          instance.sink.on("requeued", function () {
             expect(amqpResponseStub.reject.callCount).to.be(1);
             expect(amqpResponseStub.reject.args[0][0]).to.be(true);
             expect(instance.__outstandingAcks[1]).to.be(null);
@@ -516,16 +516,16 @@ describe("rabbitmq-queue-stream", function() {
           readable.pipe(instance.sink);
         });
 
-        it("removes messages from queue when tagged with AMQPStream.RemoveMessage", function(done) {
+        it("removes messages from queue when tagged with AMQPStream.RejectMessage", function(done) {
           instance.__outstandingAcks = [
             undefined,
             amqpResponseStub
           ];
           readable._read = function () {
-            this.push(rabbitmq.DeleteMessage(goodMessage));
+            this.push(rabbitmq.RejectMessage(goodMessage));
           };
           instance._streamifyQueue(cb);
-          instance.sink.on("deleted", function () {
+          instance.sink.on("rejected", function () {
             expect(amqpResponseStub.reject.callCount).to.be(1);
             expect(amqpResponseStub.reject.args[0][0]).to.be(false);
             expect(instance.__outstandingAcks[1]).to.be(null);
@@ -544,7 +544,7 @@ describe("rabbitmq-queue-stream", function() {
           };
 
           instance._streamifyQueue(cb);
-          instance.sink.on("deleted", function () {
+          instance.sink.on("acknowledged", function () {
             expect(amqpResponseStub.acknowledge.callCount).to.be(1);
             expect(amqpResponseStub.acknowledge.args[0][0]).to.be(false);
             expect(instance.__outstandingAcks[1]).to.be(null);

@@ -65,8 +65,8 @@ RabbitMQStream.init(2, options, function(err, streamifiedQueues) {
        * Requeue:
        *     this.push(RabbitMQStream.RequeueMessage(data));
        *
-       * Delete:
-       *     this.push(RabbitMQStream.DeleteMessage(data));
+       * Reject:
+       *     this.push(RabbitMQStream.RejectMessage(data));
       */
       next();
     });
@@ -103,7 +103,7 @@ RabbitMQStream.init(2, options, function(err, streamifiedQueues) {
 ### Emitted Events
 
 #### .source
-* parseError - Emitted when a job cannot be json parsed. Passes in malform
+* parseError - Emitted when a job cannot be json parsed.
 ```javascript
 myQueueStream.source.on("parseError", function(err, message) {
   console.error("Problem JSON parsing message", message);
@@ -111,15 +111,17 @@ myQueueStream.source.on("parseError", function(err, message) {
 ```
 
 #### .sink
-* deleted - Emitted everytime a job is deleted from the queue
+* acknowledged  - Emitted everytime a message is acknowledged
+* rejected      - Emitted when a message is rejected
+* requeued      - Emitted when a message is requeued
 ```javascript
-var totalDeleted = 0;
-myQueueStream.source.on("deleted", function() {
-  console.log("Deleted", totalDeleted++);
+var totalAcked = 0;
+myQueueStream.source.on("acknowledged", function(message) {
+  console.log("Acknowledged:", message);
+  totalAcked++;
 });
 ```
-* formatError - Sink received a job that does not have the necessary information to be deleted from the queue.  
-  Most likely emitted when objects not originating from .source are written to sink.
+* formatError - Sink received a job that does not have the necessary information to be deleted from the queue. Most likely emitted when objects not originating from .source are written to sink.
 ```javascript
 myQueueStream.sink.on("formatError", function(err, message) {
   console.error("Malformatted message written to .sink. Please check your pipeline configuration", message);
