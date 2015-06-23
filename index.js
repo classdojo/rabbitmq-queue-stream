@@ -71,11 +71,11 @@ AMQPStreams.prototype.initialize = function(cb) {
       AMQPStream.create(connection, me.__options.queueStream, cb);
     };
 
-    async.timesSeries(me.__numStreams, createWorker, function(err, insightStreams) {
+    async.timesSeries(me.__numStreams, createWorker, function(err, channels) {
       if(err) {
         return cb(err);
       }
-      me.channels = insightStreams;
+      me.channels = channels;
       cb(null, me);
     });
   });
@@ -141,7 +141,7 @@ AMQPStreams.prototype.unsubscribeConsumers = function(cb) {
  * One AMQP Connection is multiplexed across multiple
  * channels. This method closes only the channel
  * corresponding to this queue stream. See AMQP#disconnect
- * to close the actual AMQP connection.  You should safely
+ * to close the actual AMQP connection. You should safely
  * unsubsribe all queues before disconnecting from the
  * AMQP server.
  *
@@ -183,7 +183,7 @@ AMQPStreams.prototype.disconnect = function(cb) {
 
 
 /*
- * Resubscribe queue consumers. Should be called after
+ * Resubscribe queue consumers.
  */
 AMQPStreams.prototype.resubscribeConsumers = function(cb) {
   async.eachSeries(this.channels, function(stream, next) {

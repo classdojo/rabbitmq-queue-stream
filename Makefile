@@ -1,9 +1,9 @@
 test:
-	make lint
-	mocha --recursive --check-leaks --timeout 10000
+	@make lint
+	@./node_modules/.bin/mocha --recursive --check-leaks --timeout 10000
 
 lint:
-	./node_modules/.bin/jshint . --verbose
+	@./node_modules/.bin/jshint . --verbose
 
 test-codecov.io:
 	@NODE_ENV=test ./node_modules/.bin/istanbul cover \
