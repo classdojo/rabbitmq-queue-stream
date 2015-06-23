@@ -25,8 +25,7 @@ var options = {
   queue: {
     name: "myQueue",
     subscribe: {
-      prefetchCount: 100
-      /* Any other option accepted by https://github.com/postwait/node-amqp#queuesubscribeoptions-listener */
+      /* Any option accepted by https://github.com/postwait/node-amqp#queuesubscribeoptions-listener */
     },
     connection: {
       /* Any option accepted by https://github.com/postwait/node-amqp#connectionqueuename-options-opencallback */

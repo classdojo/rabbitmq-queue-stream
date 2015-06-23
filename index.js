@@ -49,10 +49,10 @@ exports.DeleteMessage = function(message) {
     options.connection.* - Anything accepted by amqp.createConnection (See: https://github.com/postwait/node-amqp#connection-options-and-url)
 
     options.queue.connection.* - Anything accepted by connection.queue() (See: https://github.com/postwait/node-amqp#connectionqueuename-options-opencallback)
-      DEFAULT: {passive: true}
+      DEFAULT: { passive: true }
 
     options.queue.subscribe.* - Anything accepted by queue.subscribe() (See: https://github.com/postwait/node-amqp#queuesubscribeoptions-listener)
-      DEFAULT: {ack: true, prefetchCount: 1}
+      DEFAULT: { ack: true, prefetchCount: 1 }
 */
 function AMQPStreams(numStreams, options) {
   this.__numStreams = numStreams || 1;
