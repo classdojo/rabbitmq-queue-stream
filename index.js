@@ -269,22 +269,10 @@ AMQPStream.prototype._subscribeToQueue = function(cb) {
   var me = this;
   var queue = this.__queue;
   /* TODO: Figure out how to error handle subscription. Maybe a 'once' error handler. */
-  queue.subscribe(_.merge({ack: true, prefetchCount: 1}, this.__options.subscribe), function(message, headers, deliveryInfo, ack) {
-    var serializableMessage = {
-      body: message.data,
-      headers: headers,
-      deliveryInfo: deliveryInfo
-    };
-    /*
-     * ack is not serializable, so we need to push it
-     * onto the outstandingAck array attach
-     * an ackIndex number to the message
-    */
-    serializable._meta = {};
-    serializableMessage._meta.ackIndex = me._insertAckIntoArray(ack);
-    streamDebug("Received message. Inserted ack into index " + serializableMessage.ackIndex);
-    me.__pendingQueue.push(serializableMessage);
-  }).addCallback(function(ok) {
+  queue.subscribe(
+    _.merge({ack: true, prefetchCount: 1}, this.__options.subscribe),
+    this._handleIncomingMessage.bind(this)
+  ).addCallback(function(ok) {
     streamDebug("Subscribed with consumer tag: " + ok.consumerTag);
     me.__consumerTag = ok.consumerTag;
     me.subscribed = true;
@@ -292,13 +280,47 @@ AMQPStream.prototype._subscribeToQueue = function(cb) {
   });
 };
 
+
+AMQPStream.prototype._handleIncomingMessage = function(message, headers, deliveryInfo, ack) {
+  var isJSON = deliveryInfo.contentType === "application/json";
+  var serializableMessage = {
+    data: isJSON ? message : message.data,
+    headers: headers,
+    deliveryInfo: deliveryInfo,
+    _meta: {
+      /*
+       * ack is not serializable, so we need to push it
+       * onto the outstandingAck array attach
+       * an ackIndex number to the message
+      */      
+      ackIndex: this._insertAckIntoArray(ack)
+    }
+  };
+
+  if(isJSON && deliveryInfo.parseError) {
+    if(this.source.listeners('parseError').length) {
+      return this.source.emit("parseError", deliveryInfo.parseError, deliveryInfo.rawData);
+    } else {
+      streamDebug("Automatically rejecting malformed message. " + 
+                  "Add listener to 'parseError' for custom behavior");
+      return this.sink.write(RejectMessage(serializableMessage));
+    }
+  }
+  streamDebug("Received message. Inserted ack into index " + serializableMessage._meta.ackIndex);
+  this.__pendingQueue.push(serializableMessage);
+};
+
 AMQPStream.prototype._streamifyQueue = function(cb) {
   var queueStream, prepareMessage;
   var me = this;
   var queue = this.__queue;
+  var sink;
 
   streamInitDebug("Creating queue source");
   
+
+
+  /* Create the .source ReadableStream */
   queueStream = new Readable({objectMode: true});
   queueStream._read = function() {
     systemDebug("_read queueStream");
@@ -307,48 +329,20 @@ AMQPStream.prototype._streamifyQueue = function(cb) {
     }.bind(this));
   };
 
-  /*
-    TODO: add json mode
-
-    Transform gets a messages:
-      {
-        body: String. In our case JSON parsable.
-        headers: ,
-        deliveryInfo: ,
-        _meta: {
-          ackIndex: Number
-        }
-      }
-
-    This only pushes down the parsed body. It attaches the worker
-    id into meta
-  */
   streamInitDebug("Creating readable queue stream");
   prepareMessage = new Transform({objectMode: true});
   prepareMessage._transform = function(message, enc, next) {
-    var parsedBody;
     systemDebug("_transform prepareMessage");
-    try {
-      parsedBody = JSON.parse(message.body.toString());
-    } catch(e) {
-      if(this.listeners('parseError').length) {
-        return this.emit("parseError", e, message);
-      } else {
-        streamDebug("Automatically rejecting malformed message. " + 
-                    "Add listener to 'parseError' for custom behavior");
-        return me.sink.write(RejectMessage(message));
-      }
+    if(_.isPlainObject(message.data)) {
+      this.push(_.merge(message.data, {_meta: message._meta}));
+    } else {
+      this.push(_.pick(message, "data", "_meta"));
     }
-
-    parsedBody._meta = message._meta || {};
-    // parsedBody._meta.ackIndex = message.ackIndex;
-    this.push(parsedBody);
-    next();
   };
   this.source = queueStream.pipe(prepareMessage);
 
-  //add sink to instance
-  var sink;
+
+  /* Create the .sink WritableStream */
   streamInitDebug("Creating queue sink");
   sink = new Writable({objectMode: true});
   sink._write = function(message, enc, next) {

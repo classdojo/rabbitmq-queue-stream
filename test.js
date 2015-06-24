@@ -279,12 +279,16 @@ describe("rabbitmq-queue-stream", function() {
 
   describe("AMQPStream", function() {
 
-    var instance, connection;
+    var instance, connection, amqpResponseStub;
 
     beforeEach(function() {
       connection = new EventEmitter();
       connection.queue = sinon.stub();
       instance = new rabbitmq.AMQPStream(connection);
+      amqpResponseStub = sinon.stub({
+        acknowledge: function() {},
+        reject: function() {}
+      });
     });
 
     describe("AMQPStream.create", function() {
@@ -423,67 +427,63 @@ describe("rabbitmq-queue-stream", function() {
 
     });
 
+    describe("#_handleIncomingMessage", function() {
+      beforeEach(function() {
+        //setup .source and .sink
+        instance._streamifyQueue(function() {});
+      });
+
+
+      describe("when contentType === 'application/json'", function() {
+        var message = {};
+        var headers = {};
+        var deliveryInfo = {
+          parseError: new Error(),
+          rawData: '{"malformed":',
+          contentType: 'application/json',
+          headers: {},
+          deliveryMode: 1,
+          queue: 'some-queue',
+          deliveryTag: new Buffer("delivery-tag"),
+          redelivered: false,
+          exchange: '',
+          routingKey: 'some-queue',
+          consumerTag: 'consumer-tag'
+        };
+
+
+        it("automatically rejects any malformed message when no event listeners exist on 'parseError'", function (done) {
+          instance.sink.on("rejected", function(msg) {
+            done();
+          });
+          instance._handleIncomingMessage(null, {}, deliveryInfo, amqpResponseStub);
+        });
+
+        it("emits a `parseError` event on invalid JSON when there are event listeners", function (done) {
+          instance.source.on("parseError", function(msg) {
+            done();
+          });
+          instance._handleIncomingMessage(null, {}, deliveryInfo, amqpResponseStub);
+        });
+      });
+
+    });
+
     describe("#_streamifyQueue", function() {
 
-      var cb, writable, readable, amqpResponseStub;
+      var cb, writable, readable;
 
       beforeEach(function () {
         cb = sinon.stub();
         instance = new rabbitmq.AMQPStream();
         writable = new stream.Writable({objectMode: true});
         readable = new stream.Readable({objectMode: true});
-        amqpResponseStub = sinon.stub({
-          acknowledge: function() {},
-          reject: function() {}
-        });
       });
 
       describe("stream.source", function () {
-        it("emits a `parseError` event on invalid JSON in message.body", function (done) {
-          var badMessage = {};
-          instance._waitForMessage = sinon.stub();
-          instance._waitForMessage.onCall(0).yields(badMessage);
-          instance._streamifyQueue(cb);
-          instance.source.on("parseError", function (err, msg) {
-            expect(err).to.be.an(Error);
-            expect(msg).to.be(badMessage);
-            done();
-          });
-          instance.source.pipe(writable);
-        });
-
-        it("automatically rejects any malformed message when no event listeners exist on 'parseError'", function (done) {
-          var badMessage = {
-            body: new Buffer(''),
-            headers: {},
-            deliveryInfo: {
-              headers: {},
-              queue: 'some-queue',
-              deliveryTag: new Buffer('Some tag'),
-              redelivered: false,
-              exchange: '',
-              routingKey: 'routingkey',
-              consumerTag: 'node-amqp-49006-0.6055994627531618'
-            },
-            _meta: {
-              ackIndex: 0
-            }
-          };
-          instance.__outstandingAcks = [
-            amqpResponseStub
-          ];
-          instance._waitForMessage = sinon.stub();
-          instance._waitForMessage.onCall(0).yields(badMessage);
-          instance._streamifyQueue(cb);
-          instance.sink.on("rejected", function(message) {
-            done();
-          });
-          instance.source.pipe(writable);
-        });
-
         it("parses message, adds ackIndex, pushes downstream", function (done) {
           instance._waitForMessage = sinon.stub();
-          instance._waitForMessage.onCall(0).yields({body: '{"something": "somethingElse"}', _meta: { ackIndex: 10 }});
+          instance._waitForMessage.onCall(0).yields({data: {"something": "somethingElse"}, _meta: { ackIndex: 10 }});
 
           writable._write = function (message) {
             expect(message).to.eql({something: "somethingElse", _meta: {ackIndex: 10}});
