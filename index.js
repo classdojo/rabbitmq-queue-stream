@@ -280,7 +280,7 @@ AMQPStream.prototype._subscribeToQueue = function(cb) {
      * onto the outstandingAck array attach
      * an ackIndex number to the message
     */
-    serializable._meta = {}
+    serializable._meta = {};
     serializableMessage._meta.ackIndex = me._insertAckIntoArray(ack);
     streamDebug("Received message. Inserted ack into index " + serializableMessage.ackIndex);
     me.__pendingQueue.push(serializableMessage);
@@ -332,10 +332,10 @@ AMQPStream.prototype._streamifyQueue = function(cb) {
       parsedBody = JSON.parse(message.body.toString());
     } catch(e) {
       if(this.listeners('parseError').length) {
-        return this.emit("parseError", e, message)
+        return this.emit("parseError", e, message);
       } else {
-        streamDebug("Automatically rejecting malformed message. \
-          Add listener to 'parseError' for custom behavior");
+        streamDebug("Automatically rejecting malformed message. " + 
+                    "Add listener to 'parseError' for custom behavior");
         return me.sink.write(RejectMessage(message));
       }
     }
