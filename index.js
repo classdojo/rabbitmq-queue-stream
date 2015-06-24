@@ -23,7 +23,8 @@ exports.init = function(numStreams, options, cb) {
 };
 
 
-exports.RequeueMessage = function(message) {
+
+var RequeueMessage = function(message) {
   if(!message._meta) {
     return console.error();
   }
@@ -31,13 +32,17 @@ exports.RequeueMessage = function(message) {
   return message;
 };
 
-exports.RejectMessage = function(message) {
+var RejectMessage = function(message) {
   if(!message._meta) {
     return console.error();
   }
   message._meta.reject = true;
+
   return message; 
 };
+
+exports.RequeueMessage = RequeueMessage;
+exports.RejectMessage = RejectMessage;
 
 /*
 
@@ -270,13 +275,13 @@ AMQPStream.prototype._subscribeToQueue = function(cb) {
       headers: headers,
       deliveryInfo: deliveryInfo
     };
-
     /*
      * ack is not serializable, so we need to push it
-     * onto the outstandingAck array right now and attach
+     * onto the outstandingAck array attach
      * an ackIndex number to the message
     */
-    serializableMessage.ackIndex = me._insertAckIntoArray(ack);
+    serializable._meta = {}
+    serializableMessage._meta.ackIndex = me._insertAckIntoArray(ack);
     streamDebug("Received message. Inserted ack into index " + serializableMessage.ackIndex);
     me.__pendingQueue.push(serializableMessage);
   }).addCallback(function(ok) {
@@ -310,7 +315,9 @@ AMQPStream.prototype._streamifyQueue = function(cb) {
         body: String. In our case JSON parsable.
         headers: ,
         deliveryInfo: ,
-        ackIndex: Number
+        _meta: {
+          ackIndex: Number
+        }
       }
 
     This only pushes down the parsed body. It attaches the worker
@@ -324,11 +331,17 @@ AMQPStream.prototype._streamifyQueue = function(cb) {
     try {
       parsedBody = JSON.parse(message.body.toString());
     } catch(e) {
-      return this.emit("parseError", e, message);
+      if(this.listeners('parseError').length) {
+        return this.emit("parseError", e, message)
+      } else {
+        streamDebug("Automatically rejecting malformed message. \
+          Add listener to 'parseError' for custom behavior");
+        return me.sink.write(RejectMessage(message));
+      }
     }
 
-    parsedBody._meta = parsedBody._meta || {};
-    parsedBody._meta.ackIndex = message.ackIndex;
+    parsedBody._meta = message._meta || {};
+    // parsedBody._meta.ackIndex = message.ackIndex;
     this.push(parsedBody);
     next();
   };

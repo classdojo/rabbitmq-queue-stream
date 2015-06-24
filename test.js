@@ -279,6 +279,13 @@ describe("rabbitmq-queue-stream", function() {
 
   describe("AMQPStream", function() {
 
+    var instance, connection;
+
+    beforeEach(function() {
+      connection = new EventEmitter();
+      connection.queue = sinon.stub();
+      instance = new rabbitmq.AMQPStream(connection);
+    });
 
     describe("AMQPStream.create", function() {
 
@@ -306,7 +313,6 @@ describe("rabbitmq-queue-stream", function() {
 
       it("passes arguments to AMQPStream constructor and calls initialize with callback", function () {
         var options = {};
-        var connection = {};
         var callback = sinon.stub();
         rabbitmq.AMQPStream.create(connection, options, callback);
         expect(AMQPStreamMock.args[0][0]).to.be(connection);
@@ -319,10 +325,9 @@ describe("rabbitmq-queue-stream", function() {
 
     describe("#initialize", function() {
 
-      var instance, connection, options, queue, connectToQueueStub, subscribeToQueueStub, streamifyQueueStub;
+      var instance, options, queue, connectToQueueStub, subscribeToQueueStub, streamifyQueueStub;
 
       beforeEach(function() {
-        connection = {};
         options = {
           name: "myStream",
           onError: sinon.stub()
@@ -374,13 +379,11 @@ describe("rabbitmq-queue-stream", function() {
 
     describe("#_connectToQueue", function() {
 
-      var instance, connection, cb;
+      var cb;
 
       beforeEach(function() {
         cb = sinon.stub();
-        connection = new EventEmitter();
-        connection.queue = sinon.stub();
-        instance = new rabbitmq.AMQPStream(connection);
+        // instance = new rabbitmq.AMQPStream(connection);
       });
 
       it("attaches error listener to connection", function() {
@@ -410,17 +413,29 @@ describe("rabbitmq-queue-stream", function() {
         expect(connection.emit.bind(connection, "error", err)).to.throwError("You have failed.");
       });
 
+      it("passes the `connection` option to the underlying driver for queue initialization", function() {
+        instance = new rabbitmq.AMQPStream(connection, {connection: {passive: false}});
+        instance.__connection = new EventEmitter();
+        instance.__connection.queue = sinon.stub();
+        instance._connectToQueue("myQueue", function() {});
+        expect(instance.__connection.queue.args[0][1]).to.eql({passive: false});
+      });
+
     });
 
     describe("#_streamifyQueue", function() {
 
-      var instance, cb, writable, readable;
+      var cb, writable, readable, amqpResponseStub;
 
       beforeEach(function () {
         cb = sinon.stub();
         instance = new rabbitmq.AMQPStream();
         writable = new stream.Writable({objectMode: true});
         readable = new stream.Readable({objectMode: true});
+        amqpResponseStub = sinon.stub({
+          acknowledge: function() {},
+          reject: function() {}
+        });
       });
 
       describe("stream.source", function () {
@@ -437,9 +452,38 @@ describe("rabbitmq-queue-stream", function() {
           instance.source.pipe(writable);
         });
 
+        it("automatically rejects any malformed message when no event listeners exist on 'parseError'", function (done) {
+          var badMessage = {
+            body: new Buffer(''),
+            headers: {},
+            deliveryInfo: {
+              headers: {},
+              queue: 'some-queue',
+              deliveryTag: new Buffer('Some tag'),
+              redelivered: false,
+              exchange: '',
+              routingKey: 'routingkey',
+              consumerTag: 'node-amqp-49006-0.6055994627531618'
+            },
+            _meta: {
+              ackIndex: 0
+            }
+          };
+          instance.__outstandingAcks = [
+            amqpResponseStub
+          ];
+          instance._waitForMessage = sinon.stub();
+          instance._waitForMessage.onCall(0).yields(badMessage);
+          instance._streamifyQueue(cb);
+          instance.sink.on("rejected", function(message) {
+            done();
+          });
+          instance.source.pipe(writable);
+        });
+
         it("parses message, adds ackIndex, pushes downstream", function (done) {
           instance._waitForMessage = sinon.stub();
-          instance._waitForMessage.onCall(0).yields({body: '{"something": "somethingElse"}', ackIndex: 10});
+          instance._waitForMessage.onCall(0).yields({body: '{"something": "somethingElse"}', _meta: { ackIndex: 10 }});
 
           writable._write = function (message) {
             expect(message).to.eql({something: "somethingElse", _meta: {ackIndex: 10}});
@@ -449,17 +493,20 @@ describe("rabbitmq-queue-stream", function() {
           instance._streamifyQueue(cb);
           instance.source.pipe(writable);
         });
+
+        it("passes the `subscribe` option properly to the underlying driver", function () {
+          instance = new rabbitmq.AMQPStream(connection, {subscribe: {prefetchCount: 100}});
+          instance.__queue = {subscribe: sinon.stub()}; //.onFirstCall().returns({addCallback: function() {}});
+          instance.__queue.subscribe.onFirstCall().returns({addCallback: function() {}});
+          instance._subscribeToQueue();
+          expect(instance.__queue.subscribe.args[0][0]).to.eql({ack: true, prefetchCount: 100});
+        });
       });
 
       describe("stream.sink", function () {
-        var amqpResponseStub;
         var goodMessage;
 
         beforeEach(function() {
-          amqpResponseStub = sinon.stub({
-            acknowledge: function() {},
-            reject: function() {}
-          });
           goodMessage = {_meta: {ackIndex: 1}};
         });
 
