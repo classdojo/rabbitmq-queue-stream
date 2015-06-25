@@ -747,4 +747,58 @@ describe("rabbitmq-queue-stream", function() {
       });
     });
   });
+
+  describe("integration test", function() {
+    /* Integration test by injecting fake amqp messages into _handleMessage. Cause
+       The acks to queue the next message into the system.
+
+    */
+    var streamInstance;
+    var message1 = {_id: "1"};
+    var message2 = {_id: "2"};
+    var message3 = {_id: "3"};
+    var payloads = [message1, message2, message3];
+
+    //ack stub defers control to something that injects a new message until 
+    var ackStub = function(instance) {
+      return {
+        acknowledge: function() {
+          if(payloads.length) {
+            setTimeout(function() {
+              injectNewMessage(instance);
+            }, 10);
+          }
+        }
+      };
+    };
+
+    var injectNewMessage = function(instance) {
+      instance._handleIncomingMessage(payloads.shift(), {}, {contentType: "application/json"}, ackStub(instance));
+    };
+
+    before(function(done) {
+      var connection = new EventEmitter();
+      streamInstance = new rabbitmq.AMQPStream(connection);
+      //setup .source and .sink properties
+      streamInstance._streamifyQueue(done);
+    });
+
+    it("pipes all outstanding messages received by rabbit downstream when properly acked", function(done) {
+      var receivedMessages = [];
+      var collector = new stream.Transform({objectMode: true});
+      collector._transform = function(obj, enc, next) {
+        receivedMessages.push(obj);
+        if(receivedMessages.length === 3) {
+          done();
+        }
+        this.push(obj);
+        next();
+      };
+      streamInstance.source.pipe(collector).pipe(streamInstance.sink);
+      injectNewMessage(streamInstance);
+    });
+
+  });
 });
+
+

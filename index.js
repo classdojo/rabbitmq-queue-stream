@@ -338,6 +338,7 @@ AMQPStream.prototype._streamifyQueue = function(cb) {
     } else {
       this.push(_.pick(message, "data", "_meta"));
     }
+    next();
   };
   this.source = queueStream.pipe(prepareMessage);
 
@@ -357,7 +358,6 @@ AMQPStream.prototype._streamifyQueue = function(cb) {
       streamDebug("Could not find ack function for " + message);
       return this.emit("ackError", new Error("Cannot find ack for message."), message);
     }
-    /* TODO: How do we handle errors from acking? */
     var evt;
     if(message._meta.requeue) {
       me.__outstandingAcks[ackIndex].reject(true);
