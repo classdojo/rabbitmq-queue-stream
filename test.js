@@ -483,10 +483,10 @@ describe("rabbitmq-queue-stream", function() {
       describe("stream.source", function () {
         it("parses message, adds ackIndex, pushes downstream", function (done) {
           instance._waitForMessage = sinon.stub();
-          instance._waitForMessage.onCall(0).yields({data: {"something": "somethingElse"}, _meta: { ackIndex: 10 }});
+          instance._waitForMessage.onCall(0).yields({payload: {"something": "somethingElse"}, _meta: { ackIndex: 10 }});
 
           writable._write = function (message) {
-            expect(message).to.eql({something: "somethingElse", _meta: {ackIndex: 10}});
+            expect(message).to.eql({payload: {something: "somethingElse"}, _meta: {ackIndex: 10}});
             done();
           };
 
@@ -759,7 +759,6 @@ describe("rabbitmq-queue-stream", function() {
     var message3 = {_id: "3"};
     var payloads = [message1, message2, message3];
 
-    //ack stub defers control to something that injects a new message until 
     var ackStub = function(instance) {
       return {
         acknowledge: function() {
@@ -789,6 +788,11 @@ describe("rabbitmq-queue-stream", function() {
       collector._transform = function(obj, enc, next) {
         receivedMessages.push(obj);
         if(receivedMessages.length === 3) {
+          expect(receivedMessages).to.eql([message1, message2, message3].map(
+            function(m) {
+              return {payload: m, _meta: {ackIndex: 0}};
+            }
+          ));
           done();
         }
         this.push(obj);

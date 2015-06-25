@@ -284,7 +284,7 @@ AMQPStream.prototype._subscribeToQueue = function(cb) {
 AMQPStream.prototype._handleIncomingMessage = function(message, headers, deliveryInfo, ack) {
   var isJSON = deliveryInfo.contentType === "application/json";
   var serializableMessage = {
-    data: isJSON ? message : message.data,
+    payload: isJSON ? message : message.data,
     headers: headers,
     deliveryInfo: deliveryInfo,
     _meta: {
@@ -333,11 +333,7 @@ AMQPStream.prototype._streamifyQueue = function(cb) {
   prepareMessage = new Transform({objectMode: true});
   prepareMessage._transform = function(message, enc, next) {
     systemDebug("_transform prepareMessage");
-    if(_.isPlainObject(message.data)) {
-      this.push(_.merge(message.data, {_meta: message._meta}));
-    } else {
-      this.push(_.pick(message, "data", "_meta"));
-    }
+    this.push(_.pick(message, "payload", "_meta"));
     next();
   };
   this.source = queueStream.pipe(prepareMessage);

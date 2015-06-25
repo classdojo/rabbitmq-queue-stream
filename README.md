@@ -55,18 +55,27 @@ RabbitMQStream.init(2, options, function(err, streamifiedQueues) {
   streamifiedQueues.channels.forEach(function(channel) {
 
     var myProcessingStream = new stream.Transform({objectMode: true});
-    myProcessingStream._transform(function(data, enc, next) {
-      console.log("Doing something with", data);
-      this.push(data);
+    myProcessingStream._transform(function(obj, enc, next) {
+      /*
+      * Messages received from the source will have their data namespaced
+      * in the `obj.payload` property. `payload` will contain a parsed 
+      * JSON object if clients specified contentType: application/json
+      * when enqueuing the message. Messages enqueued with contentType:
+      * application/json but are malformed will be automatically rejected.
+      * Add a listener to event `parseError`, which will be emitted by
+      * channel.source, to handle errors yourself.
+      */
+
+      this.push(obj);
       /*
        * Messages are successfully acked and removed from the queue by default.
        * RabbitMQStream provides methods to requeue and delete messages too.
        *
        * Requeue:
-       *     this.push(RabbitMQStream.RequeueMessage(data));
+       *     this.push(RabbitMQStream.RequeueMessage(obj));
        *
        * Reject:
-       *     this.push(RabbitMQStream.RejectMessage(data));
+       *     this.push(RabbitMQStream.RejectMessage(obj));
       */
       next();
     });
@@ -103,7 +112,7 @@ RabbitMQStream.init(2, options, function(err, streamifiedQueues) {
 ### Emitted Events
 
 #### .source
-* parseError - Emitted when a job cannot be json parsed.
+* parseError - Emitted when a message specifies contentType: application/json but is malformed JSON.
 ```javascript
 myQueueStream.source.on("parseError", function(err, message) {
   console.error("Problem JSON parsing message", message);
