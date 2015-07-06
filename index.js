@@ -6,6 +6,7 @@ var streamInitDebug   = require("debug")("amqp-stream-init");
 var streamDebug       = require("debug")("amqp-stream"); //stream runtime debug
 var systemDebug       = require("debug")("system");
 
+var EventEmitter = require('events').EventEmitter;
 var Transform = require("stream").Transform;
 var Readable  = require("stream").Readable;
 var Writable  = require("stream").Writable;
@@ -18,7 +19,7 @@ exports.init = function(numStreams, options, cb) {
     cb = options;
     options = {};
   }
-  streams = new AMQPStreams(numStreams, options);
+  var streams = new AMQPStreams(numStreams, options);
   streams.initialize(cb);
 };
 
@@ -38,7 +39,7 @@ var RejectMessage = function(message) {
   }
   message._meta.reject = true;
 
-  return message; 
+  return message;
 };
 
 exports.RequeueMessage = RequeueMessage;
@@ -60,10 +61,12 @@ exports.RejectMessage = RejectMessage;
       DEFAULT: { ack: true, prefetchCount: 1 }
 */
 function AMQPStreams(numStreams, options) {
+  EventEmitter.call(this);
   this.__numStreams = numStreams || 1;
   this.__options = options;
   this.channels = [];
 }
+AMQPStreams.prototype = Object.create(EventEmitter.prototype);
 
 
 AMQPStreams.prototype.initialize = function(cb) {
@@ -74,6 +77,9 @@ AMQPStreams.prototype.initialize = function(cb) {
       return cb(err);
     }
     me._amqpConnection = connection;
+    connection.on('error', function(err) {
+      me.emit('error', err);
+    });
 
     //create individual stream channels to queue
     var createWorker = function(n, cb) {
@@ -127,7 +133,7 @@ AMQPStreams.prototype._createConnection = function(connectionOpts, cb) {
  *
  *  AMQPStreams#unsubscribeConsumers - Tells queue to stop
  *    delivering messages to the queue consumer.
- *  
+ *
  *  AMQPStreams#closeConsumers- Closes the channel between
  *    the consumer and queue.
  *
@@ -167,7 +173,7 @@ AMQPStreams.prototype.disconnect = function(cb) {
   this._amqpConnection.disconnect();
   var ignoreEconnresetError = function(err) {
 
-    /* 
+    /*
      *  Driver has a bug on some versions of RabbitMQ
      *  and node combinations where socket.close()
      *  causes an ECONNRESET. Catch and ignore
@@ -205,7 +211,7 @@ AMQPStreams.prototype.resubscribeConsumers = function(cb) {
 };
 
 
-/* 
+/*
   @param connection = An object returned by amqp.createConnection
   @param options
     options.queueName
@@ -254,13 +260,14 @@ AMQPStream.prototype.initialize = function(cb) {
 
 AMQPStream.prototype._connectToQueue = function(queueName, cb) {
   var me = this;
-  this.__connection.once("error", function(err) {
+  function onError(err) {
     streamInitDebug("Error connecting to queue " + queueName + ": " + err.message);
     return cb(err);
-  });
+  }
+  this.__connection.once("error", onError);
   this.__connection.queue(queueName, _.merge({passive: true}, this.__options.connection), function(queue) {
     streamInitDebug("Connected to queue " + queueName);
-    me.__connection.removeAllListeners("error");
+    me.__connection.removeListener("error", onError);
     return cb(null, queue);
   });
 };
@@ -292,7 +299,7 @@ AMQPStream.prototype._handleIncomingMessage = function(message, headers, deliver
        * ack is not serializable, so we need to push it
        * onto the outstandingAck array attach
        * an ackIndex number to the message
-      */      
+      */
       ackIndex: this._insertAckIntoArray(ack)
     }
   };
@@ -301,7 +308,7 @@ AMQPStream.prototype._handleIncomingMessage = function(message, headers, deliver
     if(this.source.listeners('parseError').length) {
       return this.source.emit("parseError", deliveryInfo.parseError, deliveryInfo.rawData);
     } else {
-      streamDebug("Automatically rejecting malformed message. " + 
+      streamDebug("Automatically rejecting malformed message. " +
                   "Add listener to 'parseError' for custom behavior");
       return this.sink.write(RejectMessage(serializableMessage));
     }
@@ -317,7 +324,7 @@ AMQPStream.prototype._streamifyQueue = function(cb) {
   var sink;
 
   streamInitDebug("Creating queue source");
-  
+
 
 
   /* Create the .source ReadableStream */
@@ -337,7 +344,6 @@ AMQPStream.prototype._streamifyQueue = function(cb) {
     next();
   };
   this.source = queueStream.pipe(prepareMessage);
-
 
   /* Create the .sink WritableStream */
   streamInitDebug("Creating queue sink");
@@ -370,6 +376,12 @@ AMQPStream.prototype._streamifyQueue = function(cb) {
     next();
   };
   this.sink = sink;
+
+  this.__connection.on('error', function() {
+    me.source.end();
+    me.sink.end();
+  });
+
   cb(null, this);
 };
 

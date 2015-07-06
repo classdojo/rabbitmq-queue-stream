@@ -111,6 +111,17 @@ RabbitMQStream.init(2, options, function(err, streamifiedQueues) {
 
 ### Emitted Events
 
+#### AMQPStreams
+
+* error - Emitted if connection to broker dies
+```javascript
+RabbitMQStream.init(2, options, function(err, streamifiedQueues) {
+  streamifiedQueues.on('error', function(err) {
+    console.error('socket disconnected!');
+  });
+});
+```
+
 #### .source
 * parseError - Emitted when a message specifies contentType: application/json but is malformed JSON.
 ```javascript
