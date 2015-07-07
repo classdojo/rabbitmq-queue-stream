@@ -116,6 +116,7 @@ RabbitMQStream.init(2, options, function(err, streamifiedQueues) {
 
 #### AMQPStreams
 
+* ready - AMQP client connected or reconnected
 * error - Emitted if connection to broker dies
 ```javascript
 RabbitMQStream.init(2, options, function(err, streamifiedQueues) {
