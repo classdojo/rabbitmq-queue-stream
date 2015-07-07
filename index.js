@@ -61,7 +61,6 @@ exports.RejectMessage = RejectMessage;
       DEFAULT: { ack: true, prefetchCount: 1 }
 */
 function AMQPStreams(numStreams, options) {
-  EventEmitter.call(this);
   this.__numStreams = numStreams || 1;
   this.__options = options;
   this.channels = [];
@@ -77,8 +76,10 @@ AMQPStreams.prototype.initialize = function(cb) {
       return cb(err);
     }
     me._amqpConnection = connection;
-    connection.on('error', function(err) {
-      me.emit('error', err);
+
+    // forward EventEmiter methods to underlying connection
+    _.without(_.keys(EventEmitter.prototype), 'emit').forEach(function(key) {
+      me[key] = connection[key].bind(connection);
     });
 
     //create individual stream channels to queue
@@ -376,11 +377,6 @@ AMQPStream.prototype._streamifyQueue = function(cb) {
     next();
   };
   this.sink = sink;
-
-  this.__connection.on('error', function() {
-    me.source.end();
-    me.sink.end();
-  });
 
   cb(null, this);
 };

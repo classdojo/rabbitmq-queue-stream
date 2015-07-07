@@ -320,32 +320,6 @@ describe("rabbitmq-queue-stream", function() {
           done();
         });
       });
-
-      it('closes streams', function(done) {
-        var onError = sinon.stub(),
-            onEnd = sinon.stub();
-
-        var streams = rabbitmq.init(1, {
-          connection: {},
-          queue: {name: 'hi'}
-        }, function(err, streams) {
-          // suppress error events
-          streams.on('error', onError);
-
-          // pipe data through, and listen for 'end' events
-          var channel = streams.channels[0];
-          channel.source.pipe(channel.sink);
-          channel.source.on('end', onEnd);
-
-          // simulate tcp socket dying
-          connectionObj.emit('error', new Error('ECONNRESET'));
-
-          setTimeout(function() {
-            sinon.assert.calledOnce(onEnd);
-            done();
-          }, 0);
-        });
-      });
     });
   });
 
