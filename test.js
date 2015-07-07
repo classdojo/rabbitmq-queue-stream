@@ -23,7 +23,7 @@ describe("rabbitmq-queue-stream", function() {
 
     describe("#initialize", function() {
       var createConnectionStub;
-      
+
       beforeEach(function () {
         createConnectionStub =
           sinon.stub(rabbitmq.AMQPStreams.prototype, "_createConnection");
@@ -43,13 +43,31 @@ describe("rabbitmq-queue-stream", function() {
         expect(createConnectionStub.args[0][0]).to.be(connection);
       });
 
+      it("passes node-amqp params correctly", function () {
+        var rabbitmq = rewire('./');
+        var createConnectionStub = sinon.stub().returns(new EventEmitter());
+        rabbitmq.__set__('amqp', {
+          createConnection: createConnectionStub
+        });
+
+        var shouldReconnect = false;
+        var streams = new rabbitmq.AMQPStreams(1, {
+          connection: {},
+          nodeAmqp: {reconnect: shouldReconnect}
+        });
+        streams.initialize();
+
+        sinon.assert.calledOnce(createConnectionStub);
+        expect(createConnectionStub.args[0][1]).to.eql({reconnect: shouldReconnect});
+      });
+
 
       it("attempts to create the right number of workers", function (done) {
-        var connection = {};
+        var connection = new EventEmitter();
         var queue      = {};
         streamCreateStub.yields(null);
         createConnectionStub.yields(null, connection);
-        
+
         var streams = new rabbitmq.AMQPStreams(6, {
           queue: queue
         });
@@ -68,7 +86,7 @@ describe("rabbitmq-queue-stream", function() {
 
 
       it("sets channels if successful", function (done) {
-        var connection = {};
+        var connection = new EventEmitter();
         var queue  = {};
         var worker = {};
 
@@ -89,7 +107,7 @@ describe("rabbitmq-queue-stream", function() {
         });
 
       });
-    
+
     });
 
     describe("#_createConnection", function() {
@@ -140,7 +158,7 @@ describe("rabbitmq-queue-stream", function() {
 
       it("passes back an error if the connection errors out", function () {
         var stub = sinon.stub();
-        streams._createConnection({}, stub);
+        streams._createConnection({}, {}, stub);
         var err = new Error("I hate you.");
         emitter.emit("error", err);
         expect(stub.callCount).to.be(1);
@@ -149,15 +167,15 @@ describe("rabbitmq-queue-stream", function() {
 
       it("passes back a connection object if the connection succeeds", function () {
         var stub = sinon.stub();
-        streams._createConnection({}, stub);
+        streams._createConnection({}, {}, stub);
         emitter.emit("ready");
         expect(stub.args[0][0]).to.be(null);
         expect(stub.args[0][1]).to.be(emitter);
       });
-    
+
     });
 
-    
+
     describe("AMQP queue control methods", function() {
       var amqp;
       beforeEach(function() {
@@ -272,9 +290,58 @@ describe("rabbitmq-queue-stream", function() {
         });
       });
     });
+
+    describe('after network partition', function() {
+      var rabbitmq = rewire('./');
+
+      function stubConnection() {
+        var subscriptionObj = {addCallback: sinon.stub().yields({})};
+
+        var queueObj = new EventEmitter();
+        queueObj.subscribe = sinon.stub().returns(subscriptionObj);
+
+        var connectionObj = new EventEmitter();
+        connectionObj.queue = sinon.stub().yields(queueObj);
+
+        return connectionObj;
+      }
+
+      var createConnectionStub,
+          connectionObj;
+
+      beforeEach(function () {
+        connectionObj = stubConnection();
+
+        var AMQPStreams = rabbitmq.__get__('AMQPStreams');
+        createConnectionStub =
+          sinon.stub(AMQPStreams.prototype, "_createConnection").yields(null, connectionObj);
+      });
+
+      afterEach(function () {
+        createConnectionStub.restore();
+      });
+
+      it("emits an error", function (done) {
+        var onError = sinon.stub();
+
+        var streams = rabbitmq.init(1, {
+          connection: {},
+          queue: {name: 'hi'}
+        }, function(err, streams) {
+          // listen for error events
+          streams.on('error', onError);
+
+          // simulate tcp socket dying
+          connectionObj.emit('error', new Error('ECONNRESET'));
+
+          sinon.assert.calledOnce(onError);
+          done();
+        });
+      });
+    });
   });
 
-  
+
 
 
   describe("AMQPStream", function() {
@@ -363,7 +430,7 @@ describe("rabbitmq-queue-stream", function() {
         connectToQueueStub.yields(null, queue);
         instance.initialize();
         expect(instance.__queue).to.be(queue);
-        
+
         expect(options.onError.callCount).to.be(0);
         queue.emit("error");
         expect(options.onError.callCount).to.be(1);
@@ -372,7 +439,7 @@ describe("rabbitmq-queue-stream", function() {
       it("calls _subscribeToQueue and calls _streamifyQueue on success", function() {
         connectToQueueStub.yields(null, queue);
         subscribeToQueueStub.yields(null);
-        
+
         var cb = sinon.stub();
         instance.initialize(cb);
         expect(streamifyQueueStub.callCount).to.be(1);
@@ -404,9 +471,9 @@ describe("rabbitmq-queue-stream", function() {
       it("queues connection to given queue", function() {
         var queue = {};
         connection.queue.yields(queue);
-        
+
         instance._connectToQueue("myQueue", cb);
-        
+
         var err = new Error("You have failed.");
         expect(cb.callCount).to.be(1);
         expect(cb.args[0][0]).to.be(null);
@@ -475,7 +542,7 @@ describe("rabbitmq-queue-stream", function() {
 
       beforeEach(function () {
         cb = sinon.stub();
-        instance = new rabbitmq.AMQPStream();
+        instance = new rabbitmq.AMQPStream(new EventEmitter());
         writable = new stream.Writable({objectMode: true});
         readable = new stream.Readable({objectMode: true});
       });
@@ -619,7 +686,7 @@ describe("rabbitmq-queue-stream", function() {
         expect(cb.callCount).to.be(1);
         expect(cb.args[0][0]).to.be("one");
         expect(instance.__pendingQueue).to.eql(["two", "three"]);
-        
+
         // Make sure we're not triggering the wait functionality.
         setTimeout(function() {
           expect(cb.callCount).to.be(1);
@@ -638,13 +705,13 @@ describe("rabbitmq-queue-stream", function() {
             expect(cb.callCount).to.be(1);
             expect(cb.args[0][0]).to.be("one");
             expect(instance.__pendingQueue).to.eql(["two", "three"]);
-            
+
             // Make sure we're not still waiting after receiving items.
             setTimeout(function() {
               expect(cb.callCount).to.be(1);
               done();
             }, 20);
-          
+
           }, 20);
 
         }, 50);
@@ -673,7 +740,7 @@ describe("rabbitmq-queue-stream", function() {
     });
 
     describe("#unsubscribe", function() {
-      
+
       var instance;
 
       beforeEach(function() {
@@ -682,22 +749,22 @@ describe("rabbitmq-queue-stream", function() {
 
       it("calls unsubscribe on queue if currently subscribed", function(done) {
         var queue = {};
-        
+
         var addCallback = sinon.stub();
         addCallback.yields();
-        
+
         queue.unsubscribe = sinon.stub();
         queue.unsubscribe.returns({
           addCallback: addCallback
         });
-        
+
         instance.__queue = queue;
         instance.subscribed = true;
         instance.__consumerTag = "myTag";
 
         instance.unsubscribe(function() {
           expect(instance.subscribed).to.be(false);
-          
+
           expect(queue.unsubscribe.callCount).to.be(1);
           expect(queue.unsubscribe.args[0][0]).to.be("myTag");
 

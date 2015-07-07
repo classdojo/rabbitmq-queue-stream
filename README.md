@@ -22,6 +22,9 @@ var options = {
   connection: {
     url: "amqp://user:password@rabbitmq.com"
   },
+  nodeAmqp: {
+    reconnect: false // defaults to true, see https://github.com/postwait/node-amqp#connection-options-and-url (search for reconnect)
+  }
   queue: {
     name: "myQueue",
     subscribe: {
@@ -110,6 +113,18 @@ RabbitMQStream.init(2, options, function(err, streamifiedQueues) {
 ```
 
 ### Emitted Events
+
+#### AMQPStreams
+
+* ready - AMQP client connected or reconnected
+* error - Emitted if connection to broker dies
+```javascript
+RabbitMQStream.init(2, options, function(err, streamifiedQueues) {
+  streamifiedQueues.on('error', function(err) {
+    console.error('socket disconnected!');
+  });
+});
+```
 
 #### .source
 * parseError - Emitted when a message specifies contentType: application/json but is malformed JSON.
