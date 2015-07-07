@@ -43,6 +43,24 @@ describe("rabbitmq-queue-stream", function() {
         expect(createConnectionStub.args[0][0]).to.be(connection);
       });
 
+      it("passes node-amqp params correctly", function () {
+        var rabbitmq = rewire('./');
+        var createConnectionStub = sinon.stub().returns(new EventEmitter());
+        rabbitmq.__set__('amqp', {
+          createConnection: createConnectionStub
+        });
+
+        var shouldReconnect = false;
+        var streams = new rabbitmq.AMQPStreams(1, {
+          connection: {},
+          nodeAmqp: {reconnect: shouldReconnect}
+        });
+        streams.initialize();
+
+        sinon.assert.calledOnce(createConnectionStub);
+        expect(createConnectionStub.args[0][1]).to.eql({reconnect: shouldReconnect});
+      });
+
 
       it("attempts to create the right number of workers", function (done) {
         var connection = new EventEmitter();
@@ -140,7 +158,7 @@ describe("rabbitmq-queue-stream", function() {
 
       it("passes back an error if the connection errors out", function () {
         var stub = sinon.stub();
-        streams._createConnection({}, stub);
+        streams._createConnection({}, {}, stub);
         var err = new Error("I hate you.");
         emitter.emit("error", err);
         expect(stub.callCount).to.be(1);
@@ -149,7 +167,7 @@ describe("rabbitmq-queue-stream", function() {
 
       it("passes back a connection object if the connection succeeds", function () {
         var stub = sinon.stub();
-        streams._createConnection({}, stub);
+        streams._createConnection({}, {}, stub);
         emitter.emit("ready");
         expect(stub.args[0][0]).to.be(null);
         expect(stub.args[0][1]).to.be(emitter);

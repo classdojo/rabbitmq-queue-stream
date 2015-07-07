@@ -22,6 +22,9 @@ var options = {
   connection: {
     url: "amqp://user:password@rabbitmq.com"
   },
+  nodeAmqp: {
+    reconnect: false // defaults to true, see https://github.com/postwait/node-amqp#connection-options-and-url (search for reconnect)
+  }
   queue: {
     name: "myQueue",
     subscribe: {

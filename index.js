@@ -52,7 +52,8 @@ exports.RejectMessage = RejectMessage;
 
     options.url - amqp url
 
-    options.connection.* - Anything accepted by amqp.createConnection (See: https://github.com/postwait/node-amqp#connection-options-and-url)
+    options.connection.* - Anything accepted by amqp.createConnection's first arg (See: https://github.com/postwait/node-amqp#connection-options-and-url)
+    options.nodeAmqp.* - Anything accepted by amqp.createConnection's second arg (See: https://github.com/postwait/node-amqp#connection-options-and-url)
 
     options.queue.connection.* - Anything accepted by connection.queue() (See: https://github.com/postwait/node-amqp#connectionqueuename-options-opencallback)
       DEFAULT: { passive: true }
@@ -71,7 +72,7 @@ AMQPStreams.prototype = Object.create(EventEmitter.prototype);
 AMQPStreams.prototype.initialize = function(cb) {
   streamsDebug("Initializing " + this.__numStreams + " streams");
   var me = this;
-  this._createConnection(this.__options.connection, function(err, connection) {
+  this._createConnection(this.__options.connection, this.__options.nodeAmqp, function(err, connection) {
     if(err) {
       return cb(err);
     }
@@ -98,7 +99,7 @@ AMQPStreams.prototype.initialize = function(cb) {
 };
 
 
-AMQPStreams.prototype._createConnection = function(connectionOpts, cb) {
+AMQPStreams.prototype._createConnection = function(connectionOpts, implOptions, cb) {
   streamsDebug("Creating amqp connection.");
   connectionOpts = connectionOpts || {};
   var defaultOpts = {
@@ -110,7 +111,7 @@ AMQPStreams.prototype._createConnection = function(connectionOpts, cb) {
     }
   };
 
-  var connection = amqp.createConnection(_.merge(defaultOpts, connectionOpts));
+  var connection = amqp.createConnection(_.merge(defaultOpts, connectionOpts), implOptions || {});
 
   /* handle successful or error on initial connection */
   connection.once("error", function(err) {
