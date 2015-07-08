@@ -7,6 +7,17 @@ var sinon           = require("sinon");
 var amqp            = require("amqp");
 var _               = require("lodash");
 
+function stubConnection() {
+  var subscriptionObj = {addCallback: sinon.stub().yields({})};
+
+  var queueObj = new EventEmitter();
+  queueObj.subscribe = sinon.stub().returns(subscriptionObj);
+
+  var connectionObj = new EventEmitter();
+  connectionObj.queue = sinon.stub().yields(queueObj);
+
+  return connectionObj;
+}
 
 describe("rabbitmq-queue-stream", function() {
   describe("AMQPStreams", function() {
@@ -177,38 +188,88 @@ describe("rabbitmq-queue-stream", function() {
 
 
     describe("AMQP queue control methods", function() {
-      var amqp;
-      beforeEach(function() {
+      var rabbitmq = rewire('./');
+      var createConnectionStub,
+          connectionObj,
+          queueStreams;
+
+      beforeEach(function (done) {
+        connectionObj = stubConnection();
+
+        var AMQPStreams = rabbitmq.__get__('AMQPStreams');
+        createConnectionStub =
+          sinon.stub(AMQPStreams.prototype, "_createConnection").yields(null, connectionObj);
+
         var streams = [];
-        amqp = new rabbitmq.AMQPStreams(6, {});
         _.times(4, function() {
           streams.push({
             unsubscribe: sinon.stub().yields(null),
             close: sinon.stub().yields(null)
           });
         });
-        amqp.channels = streams;
+
+        rabbitmq.init(6, {
+          queue: {name: 'hi'}
+        }, function(err, qs) {
+          expect(err).to.not.be.ok();
+          queueStreams = qs;
+          queueStreams.channels = streams;
+
+          // simulate amqp connected
+          connectionObj.emit('ready');
+
+          done();
+        });
+      });
+
+      afterEach(function () {
+        createConnectionStub.restore();
       });
 
       describe("#unsubscribeConsumers", function() {
         it("calls #unsubscribe for every stream in AMQPStreams.channels", function(done) {
-          amqp.unsubscribeConsumers(function(err) {
+          queueStreams.unsubscribeConsumers(function(err) {
             expect(err).to.not.be.ok();
-            amqp.channels.forEach(function(channel) {
+            queueStreams.channels.forEach(function(channel) {
               expect(channel.unsubscribe.callCount).to.be(1);
             });
             done();
           });
         });
 
+        it("is a noop if currently disconnected from broker", function(done) {
+          // simulate amqp disconnected
+          connectionObj.emit('close');
+
+          queueStreams.unsubscribeConsumers(function(err) {
+            expect(err).to.not.be.ok();
+            queueStreams.channels.forEach(function(channel) {
+              expect(channel.unsubscribe.callCount).to.be(0);
+            });
+            done();
+          });
+        });
       });
 
       describe("#closeConsumers", function() {
         it("calls #close on every stream in AMQPStreams.channels", function(done) {
-          amqp.closeConsumers(function(err) {
+          queueStreams.closeConsumers(function(err) {
             expect(err).to.not.be.ok();
-            amqp.channels.forEach(function(channel) {
+            queueStreams.channels.forEach(function(channel) {
               expect(channel.close.callCount).to.be(1);
+            });
+            done();
+          });
+        });
+
+        it("is a noop if currently disconnected from broker", function(done) {
+          // simulate amqp disconnected
+          connectionObj.emit('close');
+
+          queueStreams.closeConsumers(function(err) {
+            expect(err).to.not.be.ok();
+            queueStreams.channels.forEach(function(channel) {
+              expect(channel.close.callCount).to.be(0);
             });
             done();
           });
@@ -216,59 +277,67 @@ describe("rabbitmq-queue-stream", function() {
       });
 
       describe("#disconnect", function() {
-        var mockAmqp;
         beforeEach(function() {
-          mockAmqp = new EventEmitter();
-          mockAmqp.disconnect = sinon.spy();
-          amqp._amqpConnection = mockAmqp;
+          connectionObj.disconnect = sinon.spy();
         });
 
         it("calls #disconnect on the amqp connection", function(done) {
-          amqp.disconnect(function(err) {
+          queueStreams.disconnect(function(err) {
             expect(err).to.not.be.ok();
-            expect(amqp._amqpConnection.disconnect.callCount).to.be(1);
+            expect(connectionObj.disconnect.callCount).to.be(1);
             done();
           });
           //simulate successful close
-          amqp._amqpConnection.emit("close");
+          connectionObj.emit("close");
         });
 
         it("passes back an error to the callback when something goes wrong", function(done) {
-          amqp.disconnect(function(err) {
+          queueStreams.disconnect(function(err) {
             expect(err).to.be.an(Error);
             done();
           });
-          amqp._amqpConnection.emit("error", new Error("Some disconnection error"));
+          connectionObj.emit("error", new Error("Some disconnection error"));
         });
 
         it("ignores TCP ECONNRESET errors", function(done) {
-          amqp.disconnect(function(err) {
+          queueStreams.disconnect(function(err) {
             //will fail if first error event gets through
             expect(err).to.not.be.ok();
             done();
           });
-          amqp._amqpConnection.emit("error", new Error("ECONNRESET"));
-          amqp._amqpConnection.emit("close");
+          connectionObj.emit("error", new Error("ECONNRESET"));
+          connectionObj.emit("close");
+        });
+
+        it("is a noop if currently disconnected from broker", function(done) {
+          // simulate amqp disconnected
+          connectionObj.emit('close');
+
+          queueStreams.disconnect(function(err) {
+            expect(err).to.not.be.ok();
+            expect(connectionObj.disconnect.callCount).to.be(0);
+            done();
+          });
         });
       });
 
       describe("#resubscribeConsumers", function() {
         beforeEach(function() {
-          amqp.channels.forEach(function(stream) {
+          queueStreams.channels.forEach(function(stream) {
             stream._subscribeToQueue = sinon.stub().yields(null);
           });
         });
 
         afterEach(function() {
-          amqp.channels.forEach(function(stream) {
+          queueStreams.channels.forEach(function(stream) {
             stream._subscribeToQueue.reset();
           });
         });
 
         it("attempts to resubscribe to the queue if the worker is unsubscribed", function(done) {
-          amqp.resubscribeConsumers(function(err) {
+          queueStreams.resubscribeConsumers(function(err) {
             expect(err).to.not.be.ok();
-            amqp.channels.forEach(function(stream) {
+            queueStreams.channels.forEach(function(stream) {
               expect(stream._subscribeToQueue.callCount).to.be(1);
             });
             done();
@@ -277,12 +346,12 @@ describe("rabbitmq-queue-stream", function() {
 
         it("doesn't attempt to subscribe to the queue if the queue is already subscribed", function(done) {
           //since we haven't initialized the streams in the test, let's manually say we've subscribed here
-          amqp.channels.forEach(function(stream) {
+          queueStreams.channels.forEach(function(stream) {
             stream.subscribed = true;
           });
-          amqp.resubscribeConsumers(function(err) {
+          queueStreams.resubscribeConsumers(function(err) {
             expect(err).to.not.be.ok();
-            amqp.channels.forEach(function(stream) {
+            queueStreams.channels.forEach(function(stream) {
               expect(stream._subscribeToQueue.callCount).to.be(0);
             });
             done();
@@ -293,19 +362,6 @@ describe("rabbitmq-queue-stream", function() {
 
     describe('after network partition', function() {
       var rabbitmq = rewire('./');
-
-      function stubConnection() {
-        var subscriptionObj = {addCallback: sinon.stub().yields({})};
-
-        var queueObj = new EventEmitter();
-        queueObj.subscribe = sinon.stub().returns(subscriptionObj);
-
-        var connectionObj = new EventEmitter();
-        connectionObj.queue = sinon.stub().yields(queueObj);
-
-        return connectionObj;
-      }
-
       var createConnectionStub,
           connectionObj;
 

@@ -62,6 +62,8 @@ exports.RejectMessage = RejectMessage;
       DEFAULT: { ack: true, prefetchCount: 1 }
 */
 function AMQPStreams(numStreams, options) {
+  EventEmitter.call(this);
+
   this.__numStreams = numStreams || 1;
   this.__options = options;
   this.channels = [];
@@ -77,10 +79,29 @@ AMQPStreams.prototype.initialize = function(cb) {
       return cb(err);
     }
     me._amqpConnection = connection;
+    me._connected = false;
 
-    // forward EventEmiter methods to underlying connection
-    _.without(_.keys(EventEmitter.prototype), 'emit').forEach(function(key) {
-      me[key] = connection[key].bind(connection);
+    connection.on('ready', function() {
+      me._connected = true;
+    });
+
+    connection.on('close', function() {
+      me._connected = false;
+    });
+
+    // forward connection events to `this`
+    ['ready', 'error', 'close'].forEach(function(eventName) {
+      connection.on(eventName, function() {
+        // ignore error events while disconnecting, since those errors will be forwarded to
+        // disconnect's callback. See #disconnect()
+        if (eventName === 'error' && me._disconnecting) {
+          return;
+        }
+
+        var args = Array.prototype.slice.call(arguments);
+        args.unshift(eventName);
+        me.emit.apply(me, args);
+      });
     });
 
     //create individual stream channels to queue
@@ -113,19 +134,21 @@ AMQPStreams.prototype._createConnection = function(connectionOpts, implOptions, 
 
   var connection = amqp.createConnection(_.merge(defaultOpts, connectionOpts), implOptions || {});
 
-  /* handle successful or error on initial connection */
-  connection.once("error", function(err) {
+  function onError(err) {
     streamsDebug("Error creating connection " + err.message);
-    connection.removeAllListeners("ready");
+    connection.removeListener("ready", onReady);
     return cb(err);
-  });
+  }
 
-  connection.once("ready", function() {
+  function onReady() {
     streamsDebug("Successfully created connection");
-    connection.removeAllListeners("error");
+    connection.removeListener("error", onError);
     return cb(null, connection);
-  });
+  }
 
+  /* handle successful or error on initial connection */
+  connection.once("error", onError);
+  connection.once("ready", onReady);
 };
 
 
@@ -148,6 +171,12 @@ AMQPStreams.prototype._createConnection = function(connectionOpts, implOptions, 
  * Use AMQPStreams#closeConsumers to close the channels to queue.
 */
 AMQPStreams.prototype.unsubscribeConsumers = function(cb) {
+  // noop if we're disconnected
+  if (!this._connected) {
+    streamsDebug("Skipping unsubscribeConsumers");
+    return cb();
+  }
+
   //close every worker stream
   async.eachSeries(this.channels, function(stream, next) {
     stream.unsubscribe(next);
@@ -164,6 +193,12 @@ AMQPStreams.prototype.unsubscribeConsumers = function(cb) {
  *
 */
 AMQPStreams.prototype.closeConsumers = function(cb) {
+  // noop if we're disconnected
+  if (!this._connected) {
+    streamsDebug("Skipping closeConsumers");
+    return cb();
+  }
+
   async.eachSeries(this.channels, function(stream, next) {
     stream.close(next);
   }, cb);
@@ -171,6 +206,13 @@ AMQPStreams.prototype.closeConsumers = function(cb) {
 
 AMQPStreams.prototype.disconnect = function(cb) {
   streamsDebug("Closing AMQP connection");
+  // noop if we're disconnected
+  if (!this._connected) {
+    streamsDebug("Skipping disconnect");
+    return cb();
+  }
+
+  this._disconnecting = true;
   var me = this;
   this._amqpConnection.disconnect();
   var ignoreEconnresetError = function(err) {
@@ -193,6 +235,7 @@ AMQPStreams.prototype.disconnect = function(cb) {
 
   this._amqpConnection.once("error", ignoreEconnresetError);
   this._amqpConnection.once("close", function() {
+    this._disconnecting = false;
     me._amqpConnection.removeListener("error", ignoreEconnresetError);
     cb();
   });
