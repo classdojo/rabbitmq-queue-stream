@@ -79,7 +79,7 @@ AMQPStreams.prototype.initialize = function(cb) {
       return cb(err);
     }
     me._amqpConnection = connection;
-    me._connected = true;
+    me._connected = false;
 
     connection.on('ready', function() {
       me._connected = true;
@@ -173,6 +173,7 @@ AMQPStreams.prototype._createConnection = function(connectionOpts, implOptions, 
 AMQPStreams.prototype.unsubscribeConsumers = function(cb) {
   // noop if we're disconnected
   if (!this._connected) {
+    streamsDebug("Skipping unsubscribeConsumers");
     return cb();
   }
 
@@ -194,6 +195,7 @@ AMQPStreams.prototype.unsubscribeConsumers = function(cb) {
 AMQPStreams.prototype.closeConsumers = function(cb) {
   // noop if we're disconnected
   if (!this._connected) {
+    streamsDebug("Skipping closeConsumers");
     return cb();
   }
 
@@ -206,6 +208,7 @@ AMQPStreams.prototype.disconnect = function(cb) {
   streamsDebug("Closing AMQP connection");
   // noop if we're disconnected
   if (!this._connected) {
+    streamsDebug("Skipping disconnect");
     return cb();
   }
 
