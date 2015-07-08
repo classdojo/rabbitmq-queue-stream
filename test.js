@@ -435,7 +435,7 @@ describe("rabbitmq-queue-stream", function() {
         rabbitmq.AMQPStream.create();
         rabbitmq.AMQPStream.create();
         rabbitmq.AMQPStream.create();
-        expect(rabbitmq.AMQPStream._totalWorkers).to.equal(3);
+        expect(rabbitmq.AMQPStream.__totalWorkers).to.equal(3);
       });
 
       it("passes arguments to AMQPStream constructor and calls initialize with callback", function () {
@@ -460,7 +460,7 @@ describe("rabbitmq-queue-stream", function() {
           onError: sinon.stub()
         };
         queue = new EventEmitter();
-        instance = new rabbitmq.AMQPStream(connection, options);
+        instance = new rabbitmq.AMQPStream(connection, options, 1);
         connectToQueueStub = sinon.stub(rabbitmq.AMQPStream.prototype, "_connectToQueue");
         subscribeToQueueStub = sinon.stub(rabbitmq.AMQPStream.prototype, "_subscribeToQueue");
         streamifyQueueStub = sinon.stub(rabbitmq.AMQPStream.prototype, "_streamifyQueue");

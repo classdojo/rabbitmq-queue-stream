@@ -1,17 +1,13 @@
+var _                 = require("lodash");
 var amqp              = require("amqp");
 var async             = require("async");
-var _                 = require("lodash");
-var streamsDebug      = require("debug")("amqp-streams");
-var streamInitDebug   = require("debug")("amqp-stream-init");
-var streamDebug       = require("debug")("amqp-stream"); //stream runtime debug
-var systemDebug       = require("debug")("system");
+var debug             = require("debug");
+var Readable          = require("stream").Readable;
+var Writable          = require("stream").Writable;
+var Transform         = require("stream").Transform;
+var EventEmitter      = require('events').EventEmitter;
 
-var EventEmitter = require('events').EventEmitter;
-var Transform = require("stream").Transform;
-var Readable  = require("stream").Readable;
-var Writable  = require("stream").Writable;
-
-
+var streamsDebug      = debug("rabbitmq-queue-stream:streams");
 
 
 exports.init = function(numStreams, options, cb) {
@@ -22,7 +18,6 @@ exports.init = function(numStreams, options, cb) {
   var streams = new AMQPStreams(numStreams, options);
   streams.initialize(cb);
 };
-
 
 
 var RequeueMessage = function(message) {
@@ -69,7 +64,6 @@ function AMQPStreams(numStreams, options) {
   this.channels = [];
 }
 AMQPStreams.prototype = Object.create(EventEmitter.prototype);
-
 
 AMQPStreams.prototype.initialize = function(cb) {
   streamsDebug("Initializing " + this.__numStreams + " streams");
@@ -227,7 +221,7 @@ AMQPStreams.prototype.disconnect = function(cb) {
     */
 
     if(_.contains(err.message, "ECONNRESET")) {
-      streamDebug("Ignoring ECONNRESET error");
+      streamsDebug("Ignoring ECONNRESET error");
       return;
     }
     cb(err);
@@ -261,24 +255,24 @@ AMQPStreams.prototype.resubscribeConsumers = function(cb) {
   @param options
     options.queueName
 */
-function AMQPStream(connection, options) {
+function AMQPStream(connection, options, workerNum) {
   this.__connection = connection;
   this.__options = options || {};
   this.__outstandingAcks = [];
   this.__pendingQueue = [];
+  this.__debug = debug("rabbitmq-queue-stream:worker:" + (workerNum || "-"));
 }
 
 AMQPStream.create = function(connection, options, cb) {
-  this._totalWorkers = this._totalWorkers || 0;
-  this._totalWorkers++;
-  streamInitDebug("Creating stream " + this._totalWorkers);
-  var stream = new this(connection, options);
+  this.__totalWorkers = this.__totalWorkers || 0;
+  this.__totalWorkers++;
+  var stream = new this(connection, options, this.__totalWorkers);
   stream.initialize(cb);
 };
 
 AMQPStream.prototype.initialize = function(cb) {
   var me = this;
-  streamInitDebug("Initializing");
+  this.__debug("Initializing");
   if(!this.__options.name) {
     throw new Error("You must provide a `name` to queueStream options object");
   }
@@ -294,7 +288,7 @@ AMQPStream.prototype.initialize = function(cb) {
     //Last step is to streamify this queue by attaching stream .source and .sink properties
     me._subscribeToQueue(function(err) {
       if(err) {
-        streamInitDebug("Error subscribe to queue " + this.__options.name + ". " + err.message);
+        me.__debug("Error subscribe to queue " + this.__options.name + ". " + err.message);
         return cb(err);
       }
       me._streamifyQueue(cb);
@@ -306,12 +300,12 @@ AMQPStream.prototype.initialize = function(cb) {
 AMQPStream.prototype._connectToQueue = function(queueName, cb) {
   var me = this;
   function onError(err) {
-    streamInitDebug("Error connecting to queue " + queueName + ": " + err.message);
+    me.__debug("Error connecting to queue " + queueName + ": " + err.message);
     return cb(err);
   }
   this.__connection.once("error", onError);
   this.__connection.queue(queueName, _.merge({passive: true}, this.__options.connection), function(queue) {
-    streamInitDebug("Connected to queue " + queueName);
+    me.__debug("Connected to queue " + queueName);
     me.__connection.removeListener("error", onError);
     return cb(null, queue);
   });
@@ -325,7 +319,7 @@ AMQPStream.prototype._subscribeToQueue = function(cb) {
     _.merge({ack: true, prefetchCount: 1}, this.__options.subscribe),
     this._handleIncomingMessage.bind(this)
   ).addCallback(function(ok) {
-    streamDebug("Subscribed with consumer tag: " + ok.consumerTag);
+    me.__debug("Subscribed with consumer tag: " + ok.consumerTag);
     me.__consumerTag = ok.consumerTag;
     me.subscribed = true;
     cb(null, me);
@@ -353,12 +347,12 @@ AMQPStream.prototype._handleIncomingMessage = function(message, headers, deliver
     if(this.source.listeners('parseError').length) {
       return this.source.emit("parseError", deliveryInfo.parseError, deliveryInfo.rawData);
     } else {
-      streamDebug("Automatically rejecting malformed message. " +
+      this.__debug("Automatically rejecting malformed message. " +
                   "Add listener to 'parseError' for custom behavior");
       return this.sink.write(RejectMessage(serializableMessage));
     }
   }
-  streamDebug("Received message. Inserted ack into index " + serializableMessage._meta.ackIndex);
+  this.__debug("Received message. Inserted ack into index " + serializableMessage._meta.ackIndex);
   this.__pendingQueue.push(serializableMessage);
 };
 
@@ -368,41 +362,35 @@ AMQPStream.prototype._streamifyQueue = function(cb) {
   var queue = this.__queue;
   var sink;
 
-  streamInitDebug("Creating queue source");
-
-
 
   /* Create the .source ReadableStream */
   queueStream = new Readable({objectMode: true});
   queueStream._read = function() {
-    systemDebug("_read queueStream");
+    me.__debug("_read .source");
     me._waitForMessage(function(message) {
       this.push(message);
     }.bind(this));
   };
 
-  streamInitDebug("Creating readable queue stream");
   prepareMessage = new Transform({objectMode: true});
   prepareMessage._transform = function(message, enc, next) {
-    systemDebug("_transform prepareMessage");
     this.push(_.pick(message, "payload", "_meta"));
     next();
   };
   this.source = queueStream.pipe(prepareMessage);
 
   /* Create the .sink WritableStream */
-  streamInitDebug("Creating queue sink");
   sink = new Writable({objectMode: true});
   sink._write = function(message, enc, next) {
-    systemDebug("_write sink");
+    me.__debug("_write .sink");
     if(!message._meta || !_.isNumber(message._meta.ackIndex)) {
-      streamDebug("Could not find ackIndex in message " + message);
+      me.__debug("Could not find ackIndex in message " + message);
       return this.emit("formatError", new Error("No ack index for message"), message);
     }
     var ackIndex = message._meta.ackIndex;
     if(!me.__outstandingAcks[ackIndex]) {
       //something went wrong and we can't ack message
-      streamDebug("Could not find ack function for " + message);
+      me.__debug("Could not find ack function for " + message);
       return this.emit("ackError", new Error("Cannot find ack for message."), message);
     }
     var evt;
@@ -429,16 +417,16 @@ AMQPStream.prototype._waitForMessage = function(cb) {
   var i;
   var me = this;
   if(_.isEmpty(this.__pendingQueue)) {
-    streamDebug("Waiting for message");
+    this.__debug("Waiting for message");
     i = setInterval(function() {
       if(!_.isEmpty(me.__pendingQueue)) {
         clearInterval(i);
-        streamDebug("Received messages. Continuing...");
+        me.__debug("Received messages. Continuing...");
         return cb(me.__pendingQueue.shift());
       }
     }, 5);
   } else {
-    streamDebug("Dequeueing pending message");
+    this.__debug("Dequeueing pending message");
     cb(this.__pendingQueue.shift());
   }
 };
@@ -460,21 +448,21 @@ AMQPStream.prototype._insertAckIntoArray = function(ack) {
 */
 AMQPStream.prototype.unsubscribe = function(cb) {
   var me = this;
-  streamDebug("Unsubscribing with consumerTag " + this.__consumerTag);
+  this.__debug("Unsubscribing with consumerTag " + this.__consumerTag);
   if(this.subscribed) {
     this.__queue.unsubscribe(this.__consumerTag).addCallback(function() {
       me.subscribed = false;
       cb();
     });
   } else {
-    streamDebug("Worker already unsubscribed");
+    this.__debug("Worker already unsubscribed");
     cb();
   }
 };
 
 AMQPStream.prototype.close = function(cb) {
   var me = this;
-  streamDebug("Unsubscribing with consumerTag " + this.__consumerTag);
+  this.__debug("Unsubscribing with consumerTag " + this.__consumerTag);
   this.__queue.close(this.__consumer);
   var closeHandler = function() {
     me.__queue.removeListener("error", errorHandler);
