@@ -111,6 +111,34 @@ RabbitMQStream.init(2, options, function(err, streamifiedQueues) {
   };
 });
 ```
+There also a helper method that helps with integration test
+
+```javascript
+var RabbitMQStream = require("rabbitmq-queue-stream");
+var Transform = require("stream").Transform;
+var myTransformStream = new Transform({objectMode: true});
+myTransformStream._transform = function(item, enc, next) {
+  console.log("Transforming item:", item);
+  this.push(item);
+  next();
+};
+var streamifiedQueues = RabbitMQStream.createWithTestMessages([
+  "testMessage1",
+  {testMessage: "2"},
+  {testMessage: "3"}
+]);
+/*
+ * streamifiedQueues.channels will contain one channel with a
+ * streamable .source and .sink.
+ */
+ var channel = streamifiedQueues.channels.shift();
+ channel.source
+   .pipe(myTransformStream)
+   .pipe(channel.sink);
+  
+  //channel .sink emits 'requeued', 'rejected', and 'acknowledged' events
+  channel.sink.on("acknowledged", console.log.bind(null, "Acknowledged message!"));
+```
 
 ### Emitted Events
 
