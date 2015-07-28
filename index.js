@@ -256,6 +256,7 @@ AMQPStreams.prototype.resubscribeConsumers = function(cb) {
     options.queueName
 */
 function AMQPStream(connection, options, workerNum) {
+  this.id = workerNum;
   this.__connection = connection;
   this.__options = options || {};
   this.__outstandingAcks = [];
@@ -474,6 +475,48 @@ AMQPStream.prototype.close = function(cb) {
   };
   this.__queue.once("close", closeHandler);
   this.__queue.once("error", errorHandler);
+};
+
+
+/*
+ * Test helper that responds with with a mock `source`
+ * and `sink` properties. Only returns one channel.
+*/
+exports.createWithTestMessages = function(testMessages) {
+  var stubSource = new Readable({objectMode: true});
+  stubSource._read = function() {
+    var itemWrapper;
+    var nextItem = testMessages.shift();
+    if(nextItem) {
+      itemWrapper = {
+        headers: {},
+        deliveryInfo: {},
+        payload: nextItem,
+        _meta: {}
+      };
+    }
+    this.push(itemWrapper);
+  };
+
+  var stubSink = new Writable({objectMode: true});
+  stubSink._write = function(item, enc, next) {
+    var evt;
+    if(item._meta.requeue) {
+      evt = "requeued";
+    } else if(item._meta.reject) {
+      evt = "rejected";
+    } else {
+      evt = "acknowledged";
+    }
+    this.emit(evt, item);
+    next();
+  };
+  return {
+    channels: [{
+      source: stubSource,
+      sink: stubSink
+    }]
+  };
 };
 
 /* export for testing */

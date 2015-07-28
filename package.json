@@ -1,6 +1,6 @@
 {
   "name": "rabbitmq-queue-stream",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Reliable streaming interface to rabbitmq queues",
   "main": "index.js",
   "scripts": {

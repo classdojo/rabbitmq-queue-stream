@@ -928,4 +928,63 @@ describe("rabbitmq-queue-stream", function() {
   });
 });
 
+describe("#createWithTestMessages", function() {
+  var testMessages, collector, collectedMessages, channel;
+
+  beforeEach(function() {
+    testMessages = [
+      "testMessage1",
+      {testMessage: "2"},
+      {testMessage: "3"}
+    ];
+    collectedMessages = [];
+    collector = new stream.Transform({objectMode: true});
+    collector._transform = function(item, enc, next) {
+      collectedMessages.push(item);
+      this.push();
+      next();
+    };
+    var streamifiedQueues = rabbitmq.createWithTestMessages(_.clone(testMessages, true));
+    channel = streamifiedQueues.channels.shift();
+  });
+
+  it("returns a stub that gives you the messages that you set in the `payload` field", function(done) {
+    channel.source
+        .pipe(collector)
+        .pipe(channel.sink);
+
+    collector.on("end", function() {
+      var receivedMessages = collectedMessages.map(function(m) { return m.payload; });
+      expect(receivedMessages).to.eql(testMessages);
+      done();
+    });
+  });
+
+  it(".sink emits 'requeued', 'rejected', and 'acknowledged' events", function(done) {
+    var events = ["requeued", "rejected", "acknowledged"];
+    var emittedEvents = [];
+    var handler = new stream.Transform({objectMode: true});
+    var queueActions = ["RequeueMessage", "RejectMessage"];
+    handler._transform = function(item, enc, cb) {
+      if(queueActions.length) {
+        this.push(rabbitmq[queueActions.shift()](item));
+      } else {
+        this.push(item);
+      }
+      cb();
+    };
+    events.forEach(function(evt) {
+      channel.sink.on(evt, emittedEvents.push.bind(emittedEvents));
+    });
+    channel.source
+      .pipe(handler)
+      .pipe(channel.sink);
+
+    handler.on("end", function() {
+      expect(emittedEvents.length).to.be(3);
+      done();
+    });
+  });
+});
+
 
