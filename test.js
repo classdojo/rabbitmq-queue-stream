@@ -201,7 +201,7 @@ describe("rabbitmq-queue-stream", function() {
           sinon.stub(AMQPStreams.prototype, "_createConnection").yields(null, connectionObj);
 
         var streams = [];
-        _.times(4, function() {
+        _.times(6, function() {
           streams.push({
             unsubscribe: sinon.stub().yields(null),
             close: sinon.stub().yields(null)
@@ -316,6 +316,28 @@ describe("rabbitmq-queue-stream", function() {
           queueStreams.disconnect(function(err) {
             expect(err).to.not.be.ok();
             expect(connectionObj.disconnect.callCount).to.be(0);
+            done();
+          });
+        });
+      });
+
+      describe("#gracefulDisconnect", function() {
+        beforeEach(function() {
+          queueStreams.unsubscribeConsumers = sinon.stub().yields(null);
+          queueStreams.closeConsumers = sinon.stub().yields(null);
+          queueStreams.disconnect = sinon.stub().yields(null);
+        });
+
+
+        it("calls #unsubscribeConsumers, #closeConsumers, #disconnect", function(done) {
+          queueStreams.gracefulDisconnect(function(err) {
+            expect(err).to.not.be.ok();
+            // queueStreams.channels.forEach(function(channel) {
+            //   expect(channel.disconnect.callCount).to.be(1);
+            // });
+            expect(queueStreams.unsubscribeConsumers.callCount).to.be(1);
+            expect(queueStreams.closeConsumers.callCount).to.be(1);
+            expect(queueStreams.disconnect.callCount).to.be(1);
             done();
           });
         });

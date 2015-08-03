@@ -146,8 +146,9 @@ AMQPStreams.prototype._createConnection = function(connectionOpts, implOptions, 
 };
 
 
+
 /*
- * NOTE: A proper disconnection routine from rabbitMQ should be
+ * NOTE: A graceful disconnection routine from rabbitMQ should be
  * done in the following order:
  *
  *  AMQPStreams#unsubscribeConsumers - Tells queue to stop
@@ -159,6 +160,18 @@ AMQPStreams.prototype._createConnection = function(connectionOpts, implOptions, 
  *  AMQPStreams#disconnect- Closes the actual TCP connection
  *    to the AMQP source.
 */
+
+/*
+ * Helper method that strings together the above disconnection
+ * routine.
+*/
+AMQPStreams.prototype.gracefulDisconnect = function(cb) {
+  async.series([
+    this.unsubscribeConsumers.bind(this),
+    this.closeConsumers.bind(this),
+    this.disconnect.bind(this)
+  ], cb);
+};
 
 /*
  * Stops fetching messages from the queue. Channels are kept open.

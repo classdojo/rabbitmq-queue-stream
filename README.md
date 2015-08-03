@@ -88,27 +88,12 @@ RabbitMQStream.init(2, options, function(err, streamifiedQueues) {
       .pipe(channel.sink);
   });
 
-  /* example graceful shutdown routine */
-  var gracefulShutdown = function() {
-    //stop fetching messages
-    streamifiedQueues.unsubscribeConsumers(function(err) {
-      if(err) {
-        //handle error
-      }
-      //Wait some time for queues to flush out before closing consumers.
-      streamifiedQueues.closeConsumers(function(err) {
-        if(err) {
-          //handle error
-        }
-        streamifiedQueues.disconnect(function(err) {
-          if(err) {
-            //handle error
-          }
-          process.exit(0);
-        });
-      });
+  process.on("SIGTERM", function() {
+    streamifiedQueues.gracefulDisconnect(function(err) {
+      // process.exit
     });
-  };
+  });
+
 });
 ```
 There also a helper method that helps with integration test
