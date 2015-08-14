@@ -605,7 +605,12 @@ describe("rabbitmq-queue-stream", function() {
         });
 
         it("emits a `parseError` event on invalid JSON when there are event listeners", function (done) {
+          var rejected = [];
+          instance.sink.on("rejected", function(msg) {
+            rejected.push(msg);
+          });
           instance.source.on("parseError", function(msg) {
+            expect(rejected.length).to.be.equal(1);
             done();
           });
           instance._handleIncomingMessage(null, {}, deliveryInfo, amqpResponseStub);
