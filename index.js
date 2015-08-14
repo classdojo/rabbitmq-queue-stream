@@ -358,12 +358,13 @@ AMQPStream.prototype._handleIncomingMessage = function(message, headers, deliver
   };
 
   if(isJSON && deliveryInfo.parseError) {
+    this.sink.write(RejectMessage(serializableMessage));
     if(this.source.listeners('parseError').length) {
       return this.source.emit("parseError", deliveryInfo.parseError, deliveryInfo.rawData);
     } else {
-      this.__debug("Automatically rejecting malformed message. " +
+      console.error("Automatically rejecting malformed message. " +
                   "Add listener to 'parseError' for custom behavior");
-      return this.sink.write(RejectMessage(serializableMessage));
+      return;
     }
   }
   this.__debug("Received message. Inserted ack into index " + serializableMessage._meta.ackIndex);
