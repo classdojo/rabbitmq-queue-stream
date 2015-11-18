@@ -968,7 +968,6 @@ describe("#createWithTestMessages", function() {
     collector = new stream.Transform({objectMode: true});
     collector._transform = function(item, enc, next) {
       collectedMessages.push(item);
-      this.push();
       next();
     };
     var streamifiedQueues = rabbitmq.createWithTestMessages(_.clone(testMessages, true));

@@ -501,14 +501,15 @@ exports.createWithTestMessages = function(testMessages) {
   stubSource._read = function() {
     var itemWrapper;
     var nextItem = testMessages.shift();
-    if(nextItem) {
-      itemWrapper = {
-        headers: {},
-        deliveryInfo: {},
-        payload: nextItem,
-        _meta: {}
-      };
+    if(!nextItem) {
+      return this.push(null);
     }
+    itemWrapper = {
+      headers: {},
+      deliveryInfo: {},
+      payload: nextItem,
+      _meta: {}
+    };
     this.push(itemWrapper);
   };
 
