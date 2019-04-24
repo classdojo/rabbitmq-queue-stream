@@ -233,7 +233,7 @@ AMQPStreams.prototype.disconnect = function(cb) {
      *  https://github.com/postwait/node-amqp/issues/300
     */
 
-    if(_.contains(err.message, "ECONNRESET")) {
+    if(_.includes(err.message, "ECONNRESET")) {
       streamsDebug("Ignoring ECONNRESET error");
       return;
     }
