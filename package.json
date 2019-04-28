@@ -18,10 +18,10 @@
     "streaming"
   ],
   "dependencies": {
-    "amqp": "^0.2.7",
-    "async": "^2.6.2",
-    "debug": "^4.1.1",
-    "lodash": "^4.17.11"
+    "amqp": "0.2.0",
+    "async": "0.9.0",
+    "debug": "3.1.0",
+    "lodash": "2.4.1"
   },
   "devDependencies": {
     "codecov.io": "0.0.8",
